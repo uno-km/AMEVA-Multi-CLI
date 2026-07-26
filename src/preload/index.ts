@@ -12,6 +12,12 @@ const api = {
     onExit: (callback: (id: string, exitCode: number) => void) => {
       ipcRenderer.on('terminal-exit', (_event, id, exitCode) => callback(id, exitCode))
     }
+  },
+  db: {
+    getSession: (id: string) => ipcRenderer.invoke('get-session', id),
+    saveSession: (id: string, data: any) => ipcRenderer.send('save-session', id, data),
+    getBookmarks: () => ipcRenderer.invoke('get-bookmarks'),
+    addBookmark: (b: any) => ipcRenderer.send('add-bookmark', b)
   }
 }
 
