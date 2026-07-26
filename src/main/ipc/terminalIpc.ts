@@ -2,7 +2,7 @@ import { ipcMain } from 'electron'
 import { PtyManager } from '../pty/PtyManager'
 import { DangerousCommandDetector } from '../security/DangerousCommandDetector'
 import { HistoryRepository } from '../db/repositories/HistoryRepository'
-import { nanoid } from 'nanoid'
+import crypto from 'crypto'
 
 export function registerTerminalIpc(ptyManager: PtyManager, historyRepo: HistoryRepository): void {
   ipcMain.on('terminal-create', (event, id, cols, rows, cwd) => {
@@ -14,10 +14,11 @@ export function registerTerminalIpc(ptyManager: PtyManager, historyRepo: History
     // In a real terminal, we'd have to buffer this correctly.
     if (data.includes('\r')) {
        if (DangerousCommandDetector.isDangerous(data)) {
-           // We could warn here. For MVP, we just let it pass or emit an IPC event.
+           ptyManager.write(id, '\r\n\x1b[31m[Security Alert] Dangerous command blocked by MVP Policy!\x1b[0m\r\n')
+           return
        }
        historyRepo.add({
-         id: nanoid(),
+         id: crypto.randomUUID(),
          command: data.trim(),
          startedAt: new Date().toISOString(),
          tags: 'manual'

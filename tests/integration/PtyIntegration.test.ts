@@ -18,10 +18,14 @@ describe('Pty Integration', () => {
 
     ptyProcess.write('echo "안녕하세요"\r')
     
-    // wait for output
-    await new Promise((r) => setTimeout(r, 1000))
+    // wait for output robustly
+    for (let i = 0; i < 50; i++) {
+      if (output.includes('안녕하세요')) break;
+      await new Promise(r => setTimeout(r, 100));
+    }
+    
     ptyProcess.kill()
 
     expect(output).toContain('안녕하세요')
-  })
+  }, 10000)
 })

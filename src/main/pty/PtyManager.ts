@@ -14,13 +14,24 @@ export class PtyManager {
 
   createSession(id: string, cols: number, rows: number, cwd?: string): void {
     const shell = ShellResolver.resolve()
-    const ptyProcess = pty.spawn(shell, [], {
-      name: 'xterm-256color',
-      cols,
-      rows,
-      cwd: cwd || process.env.HOME || process.env.USERPROFILE || process.cwd(),
-      env: process.env as Record<string, string>
-    })
+    const safeCols = cols && cols > 0 ? cols : 80;
+    const safeRows = rows && rows > 0 ? rows : 24;
+    let ptyProcess: pty.IPty
+    try {
+      ptyProcess = pty.spawn(shell, [], {
+        name: 'xterm-256color',
+        cols: safeCols,
+        rows: safeRows,
+        cwd: cwd || process.env.HOME || process.env.USERPROFILE || process.cwd(),
+        env: process.env as Record<string, string>,
+        useConpty: false
+      })
+    } catch (err: unknown) {
+      console.error('[PtyManager] Failed to spawn shell:', err)
+      this.mainWindow.webContents.send('terminal-out', id, `\r\n\x1b[31m[Error] Failed to spawn shell: ${(err as Error)?.message}\x1b[0m\r\n`)
+      this.mainWindow.webContents.send('terminal-exit', id, 1)
+      return
+    }
 
     ptyProcess.onData((data) => {
       this.mainWindow.webContents.send('terminal-out', id, data)
@@ -37,7 +48,11 @@ export class PtyManager {
   write(id: string, data: string): void {
     const session = this.sessions.get(id)
     if (session) {
-      session.process.write(data)
+      try {
+        session.process.write(data)
+      } catch (err) {
+        console.error(`[PtyManager] Failed to write to session ${id}:`, err)
+      }
     }
   }
 
@@ -45,9 +60,11 @@ export class PtyManager {
     const session = this.sessions.get(id)
     if (session) {
       try {
-        session.process.resize(cols, rows)
+        const safeCols = cols && cols > 0 ? cols : 80;
+        const safeRows = rows && rows > 0 ? rows : 24;
+        session.process.resize(safeCols, safeRows)
       } catch (err) {
-        console.error('Failed to resize', err)
+        console.error(`[PtyManager] Failed to resize session ${id}:`, err)
       }
     }
   }
@@ -55,7 +72,11 @@ export class PtyManager {
   kill(id: string): void {
     const session = this.sessions.get(id)
     if (session) {
-      session.process.kill()
+      try {
+        session.process.kill()
+      } catch (err) {
+        console.error(`[PtyManager] Failed to kill session ${id}:`, err)
+      }
       this.sessions.delete(id)
     }
   }

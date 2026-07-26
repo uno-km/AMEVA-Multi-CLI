@@ -15,9 +15,9 @@ const api = {
   },
   db: {
     getSession: (id: string) => ipcRenderer.invoke('get-session', id),
-    saveSession: (id: string, data: any) => ipcRenderer.send('save-session', id, data),
+    saveSession: (id: string, data: unknown) => ipcRenderer.send('save-session', id, data),
     getBookmarks: () => ipcRenderer.invoke('get-bookmarks'),
-    addBookmark: (b: any) => ipcRenderer.send('add-bookmark', b)
+    addBookmark: (b: Record<string, unknown>) => ipcRenderer.send('add-bookmark', b)
   }
 }
 
@@ -25,7 +25,7 @@ if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld('api', api)
   } catch (error) {
-    console.error(error)
+    console.error('ContextBridge API expose failed:', error)
   }
 } else {
   // @ts-ignore

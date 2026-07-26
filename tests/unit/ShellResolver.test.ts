@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest'
 import { ShellResolver } from '../../src/main/pty/ShellResolver'
-import * as os from 'os'
 
 describe('ShellResolver', () => {
   it('should resolve a shell string', () => {

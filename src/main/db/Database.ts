@@ -1,7 +1,6 @@
 import Database from 'better-sqlite3'
 import { app } from 'electron'
 import * as path from 'path'
-import * as fs from 'fs'
 
 export class AppDatabase {
   private db: Database.Database

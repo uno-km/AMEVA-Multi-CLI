@@ -3,10 +3,17 @@ import { TerminalView } from './components/TerminalView'
 import { useTabStore } from './stores/tabStore'
 import { nanoid } from 'nanoid'
 
+export interface Bookmark {
+  id: string
+  name: string
+  type: string
+  command: string
+  createdAt: string
+}
+
 function App(): JSX.Element {
   const { tabs, activeTabId, addTab, setActiveTab, closeTab, addPane } = useTabStore()
-  const activeTab = tabs.find(t => t.id === activeTabId)
-  const [bookmarks, setBookmarks] = useState<any[]>([])
+  const [bookmarks, setBookmarks] = useState<Bookmark[]>([])
 
   useEffect(() => {
     // Load session
@@ -31,13 +38,18 @@ function App(): JSX.Element {
   }, [tabs])
 
   const handleAddBookmark = () => {
-    const b = { id: nanoid(), name: 'New Bookmark', type: 'local', command: 'echo hello', createdAt: new Date().toISOString() }
+    const name = window.prompt('북마크 이름을 입력하세요 (예: 테스트 서버 접속):', 'New Bookmark')
+    if (!name) return
+    const command = window.prompt('명령어를 입력하세요:', 'echo hello')
+    if (!command) return
+
+    const b: Bookmark = { id: nanoid(), name, type: 'local', command, createdAt: new Date().toISOString() }
     // @ts-ignore
     window.api.db.addBookmark(b)
     setBookmarks([b, ...bookmarks])
   }
 
-  const handleRunBookmark = (b: any) => {
+  const handleRunBookmark = (b: Bookmark) => {
     const newPaneId = nanoid()
     if (tabs.length === 0) {
       const newTabId = nanoid()
@@ -86,17 +98,21 @@ function App(): JSX.Element {
         </div>
         {/* Pane Area */}
         <div style={{ flex: 1, display: 'flex', background: '#000' }}>
-          {activeTab && activeTab.panes.map(pane => (
-            <div key={pane.id} style={{ flex: 1, borderRight: '1px solid #444', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ padding: '4px', background: '#333', color: 'white', fontSize: '12px' }}>{pane.title}</div>
-              <div style={{ flex: 1 }}>
-                <TerminalView key={pane.id} />
-              </div>
+          {tabs.map(tab => (
+            <div key={tab.id} style={{ flex: 1, display: tab.id === activeTabId ? 'flex' : 'none' }}>
+              {tab.panes.map(pane => (
+                <div key={pane.id} style={{ flex: 1, borderRight: '1px solid #444', display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ padding: '4px', background: '#333', color: 'white', fontSize: '12px' }}>{pane.title}</div>
+                  <div style={{ flex: 1 }}>
+                    <TerminalView key={pane.id} paneId={pane.id} />
+                  </div>
+                </div>
+              ))}
+              {tab.panes.length > 0 && (
+                <button onClick={() => addPane(tab.id)} style={{ width: '40px', background: '#222', color: 'white', border: 'none', cursor: 'pointer' }}>+</button>
+              )}
             </div>
           ))}
-          {activeTab && activeTab.panes.length > 0 && (
-            <button onClick={() => addPane(activeTab.id)} style={{ width: '40px', background: '#222', color: 'white', border: 'none', cursor: 'pointer' }}>+</button>
-          )}
         </div>
       </div>
     </div>

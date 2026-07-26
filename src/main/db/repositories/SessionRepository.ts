@@ -11,7 +11,7 @@ export class SessionRepository {
     `)
   }
 
-  saveSession(id: string, data: any): void {
+  saveSession<T>(id: string, data: T): void {
     const stmt = this.db.getDb().prepare(`
       INSERT INTO sessions (id, data, updatedAt)
       VALUES (@id, @data, @updatedAt)
@@ -20,7 +20,7 @@ export class SessionRepository {
     stmt.run({ id, data: JSON.stringify(data), updatedAt: new Date().toISOString() })
   }
 
-  getSession(id: string): any | null {
+  getSession<T>(id: string): T | null {
     const stmt = this.db.getDb().prepare('SELECT data FROM sessions WHERE id = ?')
     const row = stmt.get(id) as { data: string } | undefined
     return row ? JSON.parse(row.data) : null
