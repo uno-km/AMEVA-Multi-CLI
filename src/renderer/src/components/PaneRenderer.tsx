@@ -5,11 +5,12 @@ import { PaneNode, useTabStore, SplitDirection } from '../stores/tabStore'
 interface Props {
   tabId: string
   node: PaneNode
-  activePaneId: string
   settings: any
 }
 
-export const PaneRenderer: React.FC<Props> = React.memo(({ tabId, node, activePaneId, settings }) => {
+// activePaneId를 prop으로 받지 않고 각 leaf pane이 직접 구독
+// → 클릭 시 변경된 pane 딱 2개(이전 활성 + 새 활성)만 re-render
+export const PaneRenderer: React.FC<Props> = React.memo(({ tabId, node, settings }) => {
   const { setActivePane, closePane, setPaneWeight, movePane, splitPane } = useTabStore()
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -80,7 +81,7 @@ export const PaneRenderer: React.FC<Props> = React.memo(({ tabId, node, activePa
       >
         {node.children.map((child, i) => (
           <React.Fragment key={child.id}>
-            <PaneRenderer tabId={tabId} node={child} activePaneId={activePaneId} settings={settings} />
+            <PaneRenderer tabId={tabId} node={child} settings={settings} />
             {i < node.children!.length - 1 && (
               <div
                 onMouseDown={(e) => {
@@ -96,7 +97,8 @@ export const PaneRenderer: React.FC<Props> = React.memo(({ tabId, node, activePa
                   [isRow ? 'width' : 'height']: '8px',
                   background: resizing?.index === i ? 'var(--accent)' : 'var(--border-light)',
                   cursor: isRow ? 'col-resize' : 'row-resize',
-                  zIndex: 10
+                  zIndex: 10,
+                  flexShrink: 0
                 }}
               />
             )}
@@ -106,54 +108,34 @@ export const PaneRenderer: React.FC<Props> = React.memo(({ tabId, node, activePa
     )
   }
 
-  const isActive = node.id === activePaneId
+  // Leaf pane: activePaneId를 Zustand selector로 직접 구독
+  // → 이 pane의 활성 여부가 바뀔 때만 이 컴포넌트가 re-render됨
+  return <LeafPane tabId={tabId} node={node} settings={settings} closePane={closePane} splitPane={splitPane} movePane={movePane} />
+})
 
-  const handleFocus = useCallback(() => {
-    const currentActive = useTabStore.getState().tabs.find(t => t.id === tabId)?.activePaneId
-    if (currentActive !== node.id) {
-      setActivePane(tabId, node.id)
-    }
-  }, [tabId, node.id, setActivePane])
+// LeafPane을 별도 컴포넌트로 분리해서 selector 구독 격리
+interface LeafPaneProps {
+  tabId: string
+  node: PaneNode
+  settings: any
+  closePane: (tabId: string, paneId: string) => void
+  splitPane: (tabId: string, targetPaneId: string, direction: SplitDirection, insertAfter?: boolean) => void
+  movePane: (tabId: string, sourcePaneId: string, targetPaneId: string, direction: SplitDirection, insertAfter: boolean) => void
+}
 
-  const handleTitleChange = useCallback((title: string) => {
-    useTabStore.getState().renamePane(tabId, node.id, title)
-  }, [tabId, node.id])
+const LeafPane: React.FC<LeafPaneProps> = React.memo(({ tabId, node, settings, closePane, splitPane, movePane }) => {
+  // 이 pane의 isActive 여부만 구독 → 다른 pane 변경은 무시
+  const isActive = useTabStore(s => s.tabs.find(t => t.id === tabId)?.activePaneId === node.id)
 
   return (
-    <div
-      style={{
-        flex: node.weight ?? 1,
-        display: 'flex',
-        flexDirection: 'column',
-        position: 'relative',
-        minWidth: 50,
-        minHeight: 50,
-        boxSizing: 'border-box',
-        border: `1px solid ${isActive ? '#00aaff' : '#333'}`,
-        boxShadow: isActive ? 'inset 0 0 0 1px #00aaff, 0 0 10px rgba(0, 170, 255, 0.4)' : 'none',
-        zIndex: isActive ? 5 : 1,
-        overflow: 'hidden'
-      }}
-    >
+    <div className={`pane-leaf${isActive ? ' pane-active' : ''}`}>
       {/* 탭 헤더 */}
       <div
+        className="pane-header"
         draggable
         onDragStart={(e) => {
           e.dataTransfer.setData('text/plain', node.id)
           e.dataTransfer.effectAllowed = 'move'
-        }}
-        style={{
-          height: '30px',
-          background: isActive ? '#007acc' : '#1e1e1e',
-          display: 'flex',
-          alignItems: 'center',
-          padding: '0 10px',
-          fontSize: '12px',
-          fontWeight: isActive ? 600 : 400,
-          color: isActive ? '#ffffff' : '#888888',
-          userSelect: 'none',
-          cursor: 'grab',
-          borderBottom: '1px solid var(--border-light)'
         }}
       >
         <span style={{ flex: 1 }}>{node.title || 'Terminal'}</span>
@@ -189,9 +171,8 @@ export const PaneRenderer: React.FC<Props> = React.memo(({ tabId, node, activePa
       <div style={{ flex: 1, position: 'relative' }}>
         <TerminalView
           paneId={node.id}
+          tabId={tabId}
           settings={settings}
-          onFocus={handleFocus}
-          onTitleChange={handleTitleChange}
         />
         <DropZones tabId={tabId} paneId={node.id} movePane={movePane} />
       </div>

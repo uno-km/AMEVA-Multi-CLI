@@ -72,3 +72,42 @@ input::placeholder {
   border-radius: 10px;
 }
 
+/* Pane active/inactive state – CSS-only, zero React re-render */
+.pane-leaf {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  min-width: 50px;
+  min-height: 50px;
+  box-sizing: border-box;
+  overflow: hidden;
+  border: 1px solid #333;
+  z-index: 1;
+  transition: border-color 0.1s, box-shadow 0.1s;
+}
+.pane-leaf.pane-active {
+  border-color: #00aaff;
+  box-shadow: inset 0 0 0 1px #00aaff, 0 0 10px rgba(0, 170, 255, 0.3);
+  z-index: 5;
+}
+
+.pane-header {
+  height: 30px;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  font-size: 12px;
+  user-select: none;
+  cursor: grab;
+  border-bottom: 1px solid var(--border-light);
+  background: #1e1e1e;
+  color: #888888;
+  font-weight: 400;
+}
+.pane-leaf.pane-active .pane-header {
+  background: #007acc;
+  color: #ffffff;
+  font-weight: 600;
+}
+

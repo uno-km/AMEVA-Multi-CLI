@@ -7,28 +7,22 @@ import { Unicode11Addon } from '@xterm/addon-unicode11'
 import { CanvasAddon } from '@xterm/addon-canvas'
 import '@xterm/xterm/css/xterm.css'
 import { HistorySearch } from './HistorySearch'
+import { useTabStore } from '../stores/tabStore'
 
 interface Props {
   paneId: string
+  tabId: string
   settings: AppSettings
   onExit?: (exitCode: number) => void
-  onFocus?: () => void
-  onTitleChange?: (title: string) => void
 }
 
-export const TerminalView: React.FC<Props> = React.memo(({ paneId, settings, onExit, onFocus, onTitleChange }) => {
+// tabId/paneId만 props로 받고, 포커스/타이틀 변경은 내부에서 직접 store 호출
+// → onFocus/onTitleChange prop 제거로 React.memo 무력화 방지
+export const TerminalView: React.FC<Props> = React.memo(({ paneId, tabId, settings, onExit }) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
   const cleanupRef = useRef<(() => void) | null>(null)
-
-  const onFocusRef = useRef(onFocus)
-  const onTitleChangeRef = useRef(onTitleChange)
-
-  useEffect(() => {
-    onFocusRef.current = onFocus
-    onTitleChangeRef.current = onTitleChange
-  }, [onFocus, onTitleChange])
 
   const [showHistorySearch, setShowHistorySearch] = useState(false)
 
@@ -37,7 +31,6 @@ export const TerminalView: React.FC<Props> = React.memo(({ paneId, settings, onE
     const term = termRef.current
     if (!fitAddon || !term || !containerRef.current) return
 
-    // DOM이 아직 화면에 제대로 렌더링되지 않았거나 너무 작으면 무시 (Windows conpty 버그 방지)
     if (containerRef.current.clientWidth < 50 || containerRef.current.clientHeight < 50) {
       return
     }
@@ -95,7 +88,6 @@ export const TerminalView: React.FC<Props> = React.memo(({ paneId, settings, onE
       console.warn('[TerminalView] CanvasAddon init fallback:', err)
     }
 
-    // 렌더링 사이클 후 fit 실행 (DOM이 실제로 렌더된 이후)
     requestAnimationFrame(() => {
       fitAddon.fit()
       window.api.terminal.create(paneId, term.cols, term.rows)
@@ -162,35 +154,42 @@ export const TerminalView: React.FC<Props> = React.memo(({ paneId, settings, onE
     // window resize 이벤트 → fit
     window.addEventListener('resize', handleFit)
 
+    // 타이틀 변경: store에 직접 업데이트 (prop 콜백 제거)
     const onTitleDispose = term.onTitleChange((title) => {
       if (title && title.trim().length > 0) {
-        onTitleChangeRef.current?.(title)
+        useTabStore.getState().renamePane(tabId, paneId, title)
       }
     })
 
-    const handleFocus = () => {
-      onFocusRef.current?.()
+    // 포커스: store에 직접 업데이트 (prop 콜백 제거)
+    // mousedown을 container에서 capture phase로 처리 → React synthetic event 체인 없음
+    const handleFocusRaw = () => {
+      const state = useTabStore.getState()
+      const tab = state.tabs.find(t => t.id === tabId)
+      if (tab && tab.activePaneId !== paneId) {
+        state.setActivePane(tabId, paneId)
+      }
     }
-    container.addEventListener('mousedown', handleFocus, true)
-    term.textarea?.addEventListener('focus', handleFocus)
+    container.addEventListener('mousedown', handleFocusRaw, true)
+    term.textarea?.addEventListener('focus', handleFocusRaw)
 
     // ResizeObserver: 컨테이너 div 크기 변화 감지 (패인 분할 등)
     let resizeObserver: ResizeObserver | null = null
-    let resizeTimer: NodeJS.Timeout | null = null
+    let resizeTimer: ReturnType<typeof setTimeout> | null = null
     if (typeof ResizeObserver !== 'undefined') {
       resizeObserver = new ResizeObserver(() => {
         if (resizeTimer) clearTimeout(resizeTimer)
         resizeTimer = setTimeout(() => {
           handleFit()
-        }, 50) // DOM 레이아웃 안정화 후 fit
+        }, 50)
       })
       resizeObserver.observe(container)
     }
 
     cleanupRef.current = () => {
       if (resizeTimer) clearTimeout(resizeTimer)
-      container.removeEventListener('mousedown', handleFocus, true)
-      term.textarea?.removeEventListener('focus', handleFocus)
+      container.removeEventListener('mousedown', handleFocusRaw, true)
+      term.textarea?.removeEventListener('focus', handleFocusRaw)
       window.removeEventListener('resize', handleFit)
       resizeObserver?.disconnect()
       cleanupOnData()
@@ -207,7 +206,7 @@ export const TerminalView: React.FC<Props> = React.memo(({ paneId, settings, onE
       cleanupRef.current?.()
       cleanupRef.current = null
     }
-  }, [paneId, handleFit]) // settings는 초기화 시에만 적용 (동적 업데이트는 아래 useEffect 사용)
+  }, [paneId, tabId, handleFit]) // settings는 초기화 시에만 적용
 
   useEffect(() => {
     if (!termRef.current) return
@@ -219,7 +218,7 @@ export const TerminalView: React.FC<Props> = React.memo(({ paneId, settings, onE
   }, [settings, handleFit])
 
   return (
-    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} onMouseDown={onFocus}>
+    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
       <div
         ref={containerRef}
         style={{

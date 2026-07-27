@@ -653,7 +653,6 @@ function App(): JSX.Element {
               <PaneRenderer
                 tabId={tab.id}
                 node={tab.rootNode}
-                activePaneId={tab.activePaneId}
                 settings={settings}
               />
             </div>
