@@ -14,7 +14,7 @@ interface Props {
   onFocus?: () => void
 }
 
-export const TerminalView: React.FC<Props> = ({ paneId, settings, onExit, onFocus }) => {
+export const TerminalView: React.FC<Props> = React.memo(({ paneId, settings, onExit, onFocus }) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
@@ -202,4 +202,4 @@ export const TerminalView: React.FC<Props> = ({ paneId, settings, onExit, onFocu
       )}
     </div>
   )
-}
+})

@@ -44,8 +44,7 @@ export class PtyManager {
         cols: safeCols,
         rows: safeRows,
         cwd: cwd || process.env.HOME || process.env.USERPROFILE || process.cwd(),
-        env: process.env as Record<string, string>,
-        useConpty: false
+        env: process.env as Record<string, string>
       })
     } catch (err: unknown) {
       console.error('[PtyManager] Failed to spawn shell:', err)

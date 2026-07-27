@@ -37,12 +37,13 @@ export async function getOpenPorts(): Promise<PortInfo[]> {
     }
 
     // 2. Get netstat
-    const { stdout: netstatOut } = await execAsync('netstat -ano | findstr LISTENING')
+    const { stdout: netstatOut } = await execAsync('netstat -ano')
     const ports = new Map<number, PortInfo>()
 
     // Parse:  TCP    0.0.0.0:135    0.0.0.0:0    LISTENING    1216
     const netstatLines = netstatOut.trim().split('\n')
     for (const line of netstatLines) {
+      if (!line.includes('LISTENING') && !line.includes('수신 대기')) continue;
       const parts = line.trim().split(/\s+/)
       if (parts.length >= 5) {
         const protocol = parts[0]

@@ -134,9 +134,13 @@ export const useTabStore = create<TabStore>((set, get) => {
     setActiveTab: (id) => set({ activeTabId: id }),
 
     setActivePane: (tabId, paneId) =>
-      set((state) => ({
-        tabs: state.tabs.map((t) => (t.id === tabId ? { ...t, activePaneId: paneId } : t))
-      })),
+      set((state) => {
+        const tab = state.tabs.find((t) => t.id === tabId)
+        if (tab && tab.activePaneId === paneId) return state
+        return {
+          tabs: state.tabs.map((t) => (t.id === tabId ? { ...t, activePaneId: paneId } : t))
+        }
+      }),
 
     addPane: (tabId) =>
       set((state) => {

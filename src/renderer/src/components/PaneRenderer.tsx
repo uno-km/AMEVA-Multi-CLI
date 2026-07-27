@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { TerminalView } from './TerminalView'
 import { PaneNode, useTabStore, SplitDirection } from '../stores/tabStore'
 
@@ -9,7 +9,7 @@ interface Props {
   settings: any
 }
 
-export const PaneRenderer: React.FC<Props> = ({ tabId, node, activePaneId, settings }) => {
+export const PaneRenderer: React.FC<Props> = React.memo(({ tabId, node, activePaneId, settings }) => {
   const { setActivePane, closePane, setPaneWeight, movePane, splitPane } = useTabStore()
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -91,8 +91,11 @@ export const PaneRenderer: React.FC<Props> = ({ tabId, node, activePaneId, setti
     )
   }
 
-  // Terminal Pane
   const isActive = node.id === activePaneId
+
+  const handleFocus = useCallback(() => {
+    setActivePane(tabId, node.id)
+  }, [tabId, node.id, setActivePane])
 
   return (
     <div
@@ -166,13 +169,13 @@ export const PaneRenderer: React.FC<Props> = ({ tabId, node, activePaneId, setti
         <TerminalView
           paneId={node.id}
           settings={settings}
-          onFocus={() => setActivePane(tabId, node.id)}
+          onFocus={handleFocus}
         />
         <DropZones tabId={tabId} paneId={node.id} movePane={movePane} />
       </div>
     </div>
   )
-}
+})
 
 const DropZones: React.FC<{
   tabId: string,

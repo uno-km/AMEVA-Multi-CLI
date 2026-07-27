@@ -258,21 +258,29 @@ function App(): JSX.Element {
   // 포트 매니저 핸들러
   // ─────────────────────────────────────────────────────────────────────────
   const refreshPorts = useCallback(async () => {
+    setIsRefreshingPorts(true)
     try {
       const ports = await window.api.system.getOpenPorts()
       setOpenPorts(ports)
     } catch (err) {
       console.error('[App] Failed to get ports', err)
+    } finally {
+      setIsRefreshingPorts(false)
     }
   }, [])
 
   useEffect(() => {
     if (isPortManagerOpen) {
       refreshPorts()
-      const interval = setInterval(refreshPorts, 5000)
-      return () => clearInterval(interval)
     }
-    return undefined
+  }, [isPortManagerOpen, refreshPorts])
+
+  useEffect(() => {
+    const onFocus = () => {
+      if (isPortManagerOpen) refreshPorts()
+    }
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
   }, [isPortManagerOpen, refreshPorts])
 
   const handleKillPort = useCallback(async (pid: number) => {
@@ -530,7 +538,7 @@ function App(): JSX.Element {
                       />
                       <label htmlFor="userPortCheck" style={{ fontSize: '11px', color: 'var(--text-muted)', cursor: 'pointer' }}>진짜 개발 서버만 보기</label>
                       <div style={{ flex: 1 }} />
-                      <button onClick={refreshPorts} style={{ ...styles.iconBtn, fontSize: '12px', padding: '0 4px', height: 'auto' }} title="새로고침">↻</button>
+                      <button onClick={refreshPorts} disabled={isRefreshingPorts} style={{ ...styles.iconBtn, fontSize: '12px', padding: '0 4px', height: 'auto', opacity: isRefreshingPorts ? 0.5 : 1 }} title="새로고침">{isRefreshingPorts ? '⏳' : '↻'}</button>
                     </div>
                     <input
                       type="text"
@@ -545,14 +553,14 @@ function App(): JSX.Element {
                     {(() => {
                       const strictIgnored = ['electron', 'language_server', 'code.exe', 'msedge', 'chrome', 'kakao', 'spotify', 'searchapp']
                       let filtered = openPorts.filter(p => {
+                        const safeName = (p.processName || '').toLowerCase()
                         if (showOnlyUserPorts) {
                           if (p.isSystem) return false
-                          const name = p.processName.toLowerCase()
-                          if (strictIgnored.some(ig => name.includes(ig))) return false
+                          if (strictIgnored.some(ig => safeName.includes(ig))) return false
                         }
                         if (portSearchQuery) {
                           const q = portSearchQuery.toLowerCase()
-                          if (!p.port.toString().includes(q) && !p.processName.toLowerCase().includes(q)) return false
+                          if (!p.port.toString().includes(q) && !safeName.includes(q)) return false
                         }
                         return true
                       })
