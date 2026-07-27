@@ -66,6 +66,14 @@ function App(): JSX.Element {
   // 설정
   const [settings, setSettings] = useState<AppSettings>({ fontSize: 14, fontFamily: '', theme: 'dark', cursorBlink: true, scrollback: 5000 })
   const [settingsOpen, setSettingsOpen] = useState(false)
+
+  // 포트 관리자
+  const [openPorts, setOpenPorts] = useState<any[]>([])
+  const [showOnlyUserPorts, setShowOnlyUserPorts] = useState(true)
+  const [isPortManagerOpen, setIsPortManagerOpen] = useState(false)
+  const [portPanelHeight, setPortPanelHeight] = useState(250)
+  const [portSearchQuery, setPortSearchQuery] = useState('')
+
   // 세션 저장 debounce 타이머
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -139,7 +147,7 @@ function App(): JSX.Element {
       const isF5 = e.key === 'F5'
       const isCtrlR = e.ctrlKey && e.key.toLowerCase() === 'r'
       const isCtrlShiftR = e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'r'
-      
+
       if (isF5 || isCtrlR || isCtrlShiftR) {
         e.preventDefault()
       }
@@ -154,7 +162,7 @@ function App(): JSX.Element {
   const handleAddBookmark = useCallback(async () => {
     const name = await prompt('명령어 묶음 추가', '북마크 이름 (예: 빌드 & 배포):', '새 명령어 묶음')
     if (!name?.trim()) return
-    const command = await prompt('명령어 입력', '실행할 명령어 (여러 개는 && 로 연결하거나 개행 가능):', 'npm run build && echo "Done"')
+    const command = await prompt('명령어 입력', '실행할 명령어 (여러 개는 && 로 연결하거나 개행 가능):', 'npm run build && echo "Done"', '', true)
     if (!command?.trim()) return
 
     const b: Bookmark = {
@@ -179,7 +187,7 @@ function App(): JSX.Element {
     (b: Bookmark) => {
       const activeTab = tabs.find((t) => t.id === activeTabId)
       if (!activeTab || !activeTab.activePaneId) return
-      
+
       // 명령어 문자열의 실제 줄바꿈을 CR로 변환하여 전송 (여러 줄 명령어 대응)
       const formattedCommand = b.command.replace(/\n/g, '\r') + '\r'
       window.api.terminal.write(activeTab.activePaneId, formattedCommand)
@@ -245,6 +253,55 @@ function App(): JSX.Element {
     window.api.db.deleteWorkspace(id)
     setSnapshots((prev) => prev.filter((w) => w.id !== id))
   }, [confirm])
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 포트 매니저 핸들러
+  // ─────────────────────────────────────────────────────────────────────────
+  const refreshPorts = useCallback(async () => {
+    try {
+      const ports = await window.api.system.getOpenPorts()
+      setOpenPorts(ports)
+    } catch (err) {
+      console.error('[App] Failed to get ports', err)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (isPortManagerOpen) {
+      refreshPorts()
+      const interval = setInterval(refreshPorts, 5000)
+      return () => clearInterval(interval)
+    }
+    return undefined
+  }, [isPortManagerOpen, refreshPorts])
+
+  const handleKillPort = useCallback(async (pid: number) => {
+    if (!(await confirm('프로세스 강제 종료', `PID ${pid}를 강제 종료하시겠습니까? (서버 포트 닫힘)`))) return
+    const success = await window.api.system.killPort(pid)
+    if (success) {
+      setTimeout(refreshPorts, 500)
+    } else {
+      // ignore alert and just refresh
+      setTimeout(refreshPorts, 500)
+    }
+  }, [confirm, refreshPorts])
+
+  const handlePortResizeMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    const startY = e.clientY
+    const startHeight = portPanelHeight
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const deltaY = startY - moveEvent.clientY
+      setPortPanelHeight(Math.max(100, Math.min(startHeight + deltaY, window.innerHeight - 150)))
+    }
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+  }, [portPanelHeight])
 
   // ─────────────────────────────────────────────────────────────────────────
   // 렌더
@@ -446,6 +503,89 @@ function App(): JSX.Element {
                 </div>
               </div>
             )}
+
+            {/* ── 포트 매니저 패널 (사이드바 하단 고정) ── */}
+            <div style={{ borderTop: '1px solid var(--border-light)', display: 'flex', flexDirection: 'column', height: isPortManagerOpen ? `${portPanelHeight}px` : '38px', flexShrink: 0, overflow: 'hidden', background: 'var(--bg-sidebar)', position: 'relative' }}>
+              <div
+                style={{ height: '4px', cursor: 'ns-resize', background: 'transparent', position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }}
+                onMouseDown={isPortManagerOpen ? handlePortResizeMouseDown : undefined}
+              />
+              <div
+                style={{ ...styles.sidebarPanelHeader, cursor: 'pointer', background: 'var(--bg-panel)', userSelect: 'none' }}
+                onClick={() => setIsPortManagerOpen(!isPortManagerOpen)}
+              >
+                <span style={styles.sidebarPanelTitle}>🔌 열린 포트 관리</span>
+                <span style={{ color: 'var(--text-muted)' }}>{isPortManagerOpen ? '▼' : '▲'}</span>
+              </div>
+
+              {isPortManagerOpen && (
+                <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+                  <div style={{ padding: '8px 14px', borderBottom: '1px solid var(--border-light)', display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <input
+                        type="checkbox"
+                        id="userPortCheck"
+                        checked={showOnlyUserPorts}
+                        onChange={(e) => setShowOnlyUserPorts(e.target.checked)}
+                      />
+                      <label htmlFor="userPortCheck" style={{ fontSize: '11px', color: 'var(--text-muted)', cursor: 'pointer' }}>진짜 개발 서버만 보기</label>
+                      <div style={{ flex: 1 }} />
+                      <button onClick={refreshPorts} style={{ ...styles.iconBtn, fontSize: '12px', padding: '0 4px', height: 'auto' }} title="새로고침">↻</button>
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="포트 번호 또는 프로세스 검색..."
+                      value={portSearchQuery}
+                      onChange={(e) => setPortSearchQuery(e.target.value)}
+                      style={{ ...styles.searchInput, marginTop: 0 }}
+                    />
+                  </div>
+
+                  <div style={styles.listScroll}>
+                    {(() => {
+                      const strictIgnored = ['electron', 'language_server', 'code.exe', 'msedge', 'chrome', 'kakao', 'spotify', 'searchapp']
+                      let filtered = openPorts.filter(p => {
+                        if (showOnlyUserPorts) {
+                          if (p.isSystem) return false
+                          const name = p.processName.toLowerCase()
+                          if (strictIgnored.some(ig => name.includes(ig))) return false
+                        }
+                        if (portSearchQuery) {
+                          const q = portSearchQuery.toLowerCase()
+                          if (!p.port.toString().includes(q) && !p.processName.toLowerCase().includes(q)) return false
+                        }
+                        return true
+                      })
+
+                      if (filtered.length === 0) return <div style={styles.emptyMsg}>검색된 포트 없음</div>
+
+                      return filtered.map(p => (
+                        <div key={`${p.port}-${p.pid}`} style={{ ...styles.listItem, cursor: 'default' }}>
+                          <div style={{ flex: 1, overflow: 'hidden' }}>
+                            <div style={{ ...styles.listItemText, fontFamily: 'monospace' }}>
+                              <span style={{ color: 'var(--accent)' }}>{p.port}</span>
+                              <span style={{ color: 'var(--text-muted)', fontSize: '11px', marginLeft: '4px' }}>({p.protocol})</span>
+                            </div>
+                            <div style={{ fontSize: '10px', color: '#777', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {p.processName} (PID: {p.pid}) {p.isSystem ? '[System]' : ''}
+                            </div>
+                          </div>
+                          {!p.isSystem && (
+                            <button
+                              onClick={() => handleKillPort(p.pid)}
+                              style={{ ...styles.deleteBtn, padding: '2px 6px', background: 'rgba(255,0,0,0.1)', borderRadius: '4px', opacity: 0.8 }}
+                              title="프로세스 강제 종료"
+                            >
+                              Kill
+                            </button>
+                          )}
+                        </div>
+                      ))
+                    })()}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
 

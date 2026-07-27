@@ -97,6 +97,10 @@ const api = {
       ipcRenderer.invoke('get-settings'),
     saveSettings: (settings: AppSettingsData): void =>
       ipcRenderer.send('save-settings', settings)
+  },
+  system: {
+    getOpenPorts: (): Promise<any[]> => ipcRenderer.invoke('get-open-ports'),
+    killPort: (pid: number): Promise<boolean> => ipcRenderer.invoke('kill-port', pid)
   }
 }
 

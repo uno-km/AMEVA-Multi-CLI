@@ -10,7 +10,7 @@ interface Props {
 }
 
 export const PaneRenderer: React.FC<Props> = ({ tabId, node, activePaneId, settings }) => {
-  const { setActivePane, closePane, setPaneWeight, movePane } = useTabStore()
+  const { setActivePane, closePane, setPaneWeight, movePane, splitPane } = useTabStore()
   const containerRef = useRef<HTMLDivElement>(null)
 
   const [resizing, setResizing] = useState<{
@@ -134,14 +134,29 @@ export const PaneRenderer: React.FC<Props> = ({ tabId, node, activePaneId, setti
       >
         <span style={{ flex: 1 }}>{node.title || 'Terminal'}</span>
         <button
+          onClick={() => splitPane(tabId, node.id, 'horizontal', true)}
+          style={{ background: 'transparent', border: 'none', color: '#888', cursor: 'pointer', fontSize: '16px', marginRight: '6px' }}
+          title="오른쪽으로 분할"
+        >
+          ◨
+        </button>
+        <button
+          onClick={() => splitPane(tabId, node.id, 'vertical', true)}
+          style={{ background: 'transparent', border: 'none', color: '#888', cursor: 'pointer', fontSize: '16px', marginRight: '6px' }}
+          title="아래로 분할"
+        >
+          ⬒
+        </button>
+        <button
           onClick={() => closePane(tabId, node.id)}
           style={{
             background: 'transparent',
             border: 'none',
             color: '#888',
             cursor: 'pointer',
-            fontSize: '14px'
+            fontSize: '16px'
           }}
+          title="닫기"
         >
           ×
         </button>

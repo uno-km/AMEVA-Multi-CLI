@@ -92,7 +92,10 @@ export const TerminalView: React.FC<Props> = ({ paneId, settings, onExit, onFocu
           .catch((err) => console.error('[TerminalView] Clipboard read failed:', err))
         return false
       }
-      if (e.ctrlKey && e.key.toLowerCase() === 'r') {
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'r') {
+        return false
+      }
+      if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'r') {
         setShowHistorySearch(true)
         return false
       }

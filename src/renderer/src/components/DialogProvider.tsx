@@ -7,13 +7,14 @@ interface DialogState {
   message: string
   defaultValue?: string
   placeholder?: string
+  multiline?: boolean
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   resolve: (value: any) => void
 }
 
 interface DialogContextProps {
   confirm: (title: string, message: string) => Promise<boolean>
-  prompt: (title: string, message: string, defaultValue?: string, placeholder?: string) => Promise<string | null>
+  prompt: (title: string, message: string, defaultValue?: string, placeholder?: string, multiline?: boolean) => Promise<string | null>
 }
 
 const DialogContext = createContext<DialogContextProps | null>(null)
@@ -34,10 +35,10 @@ export const DialogProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     })
   }
 
-  const prompt = (title: string, message: string, defaultValue = '', placeholder = ''): Promise<string | null> => {
+  const prompt = (title: string, message: string, defaultValue = '', placeholder = '', multiline = false): Promise<string | null> => {
     return new Promise((resolve) => {
       setInputValue(defaultValue)
-      setDialog({ isOpen: true, type: 'prompt', title, message, defaultValue, placeholder, resolve })
+      setDialog({ isOpen: true, type: 'prompt', title, message, defaultValue, placeholder, multiline, resolve })
     })
   }
 
@@ -92,14 +93,30 @@ export const DialogProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               {dialog.type === 'prompt' && (
-                <input
-                  autoFocus
-                  type="text"
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  placeholder={dialog.placeholder}
-                  style={{ width: '100%', boxSizing: 'border-box' }}
-                />
+                dialog.multiline ? (
+                  <textarea
+                    autoFocus
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    placeholder={dialog.placeholder}
+                    style={{ 
+                      width: '100%', boxSizing: 'border-box', 
+                      minHeight: '120px', resize: 'vertical',
+                      fontFamily: 'monospace', padding: '10px',
+                      background: 'rgba(0,0,0,0.2)', color: 'var(--text-main)',
+                      border: '1px solid var(--border-light)', borderRadius: '4px'
+                    }}
+                  />
+                ) : (
+                  <input
+                    autoFocus
+                    type="text"
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    placeholder={dialog.placeholder}
+                    style={{ width: '100%', boxSizing: 'border-box' }}
+                  />
+                )
               )}
               
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '8px' }}>
