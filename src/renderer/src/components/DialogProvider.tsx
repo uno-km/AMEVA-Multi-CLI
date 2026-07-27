@@ -7,6 +7,7 @@ interface DialogState {
   message: string
   defaultValue?: string
   placeholder?: string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   resolve: (value: any) => void
 }
 
@@ -40,6 +41,7 @@ export const DialogProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     })
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleClose = (value: any) => {
     if (dialog) {
       dialog.resolve(value)

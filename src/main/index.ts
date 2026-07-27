@@ -62,6 +62,7 @@ function createWindow(): BrowserWindow {
     height: 800,
     minWidth: 600,
     minHeight: 400,
+    icon: join(__dirname, '../../build/icon.png'),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,

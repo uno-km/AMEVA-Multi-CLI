@@ -55,7 +55,7 @@ export class SettingsRepository {
     for (const row of rows) {
       if (Object.prototype.hasOwnProperty.call(DEFAULTS, row.key)) {
         try {
-          ;(result as Record<string, unknown>)[row.key] = JSON.parse(row.value)
+          (result as Record<string, unknown>)[row.key] = JSON.parse(row.value)
         } catch {
           // keep default
         }

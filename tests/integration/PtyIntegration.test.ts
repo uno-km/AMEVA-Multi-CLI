@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import * as pty from 'node-pty'
 import { ShellResolver } from '../../src/main/pty/ShellResolver'
 
