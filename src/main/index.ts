@@ -10,31 +10,24 @@ import { BookmarkRepository } from './db/repositories/BookmarkRepository'
 import { SessionRepository } from './db/repositories/SessionRepository'
 import { WorkspaceRepository } from './db/repositories/WorkspaceRepository'
 import { SettingsRepository } from './db/repositories/SettingsRepository'
+import { SplashScreen } from './splash/SplashScreen'
 
 let tray: Tray | null = null
 let isQuitting = false
 
-// DB는 앱 전체에서 싱글턴으로 유지
-const db = new AppDatabase()
-const historyRepo = new HistoryRepository(db)
-const bookmarkRepo = new BookmarkRepository(db)
-const sessionRepo = new SessionRepository(db)
-const workspaceRepo = new WorkspaceRepository(db)
-const settingsRepo = new SettingsRepository(db)
+let db: AppDatabase
+let historyRepo: HistoryRepository
+let bookmarkRepo: BookmarkRepository
+let sessionRepo: SessionRepository
+let workspaceRepo: WorkspaceRepository
+let settingsRepo: SettingsRepository
 
-/**
- * DB 관련 IPC 채널 전체 등록.
- * handle: invoke 방식 (Promise 반환)
- * on: 단방향 이벤트 (fire-and-forget)
- */
 function registerDbIpc(): void {
-  // ── Session ──
   ipcMain.handle('get-session', (_e, id: string) => sessionRepo.getSession(id))
   ipcMain.on('save-session', (_e, id: string, data: unknown) =>
     sessionRepo.saveSession(id, data)
   )
 
-  // ── Bookmarks ──
   ipcMain.handle('get-bookmarks', () => bookmarkRepo.getAll())
   ipcMain.on('add-bookmark', (_e, b: Parameters<typeof bookmarkRepo.add>[0]) =>
     bookmarkRepo.add(b)
@@ -44,12 +37,10 @@ function registerDbIpc(): void {
   )
   ipcMain.on('delete-bookmark', (_e, id: string) => bookmarkRepo.delete(id))
 
-  // ── History ──
   ipcMain.handle('get-history', () => historyRepo.getAll())
   ipcMain.handle('search-history', (_e, query: string) => historyRepo.search(query))
   ipcMain.on('clear-history', () => historyRepo.clear())
 
-  // ── Workspaces ──
   ipcMain.handle('get-workspaces', () => workspaceRepo.getAll())
   ipcMain.handle('get-workspace', (_e, id: string) => workspaceRepo.getById(id))
   ipcMain.on('save-workspace', (_e, workspace: Parameters<typeof workspaceRepo.save>[0]) =>
@@ -57,7 +48,6 @@ function registerDbIpc(): void {
   )
   ipcMain.on('delete-workspace', (_e, id: string) => workspaceRepo.delete(id))
 
-  // ── Settings ──
   ipcMain.handle('get-settings', () => settingsRepo.getAll())
   ipcMain.on('save-settings', (_e, settings: Parameters<typeof settingsRepo.setAll>[0]) =>
     settingsRepo.setAll(settings)
@@ -70,6 +60,7 @@ function createWindow(): BrowserWindow {
     height: 800,
     minWidth: 600,
     minHeight: 400,
+    show: false, // 스플래시 로딩 완료 시 표시
     icon: icon,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -86,7 +77,6 @@ function createWindow(): BrowserWindow {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
 
-  // 강력한 새로고침 차단 (F5, Ctrl+R, Ctrl+Shift+R)
   mainWindow.webContents.on('before-input-event', (event, input) => {
     if (
       input.key === 'F5' ||
@@ -111,35 +101,66 @@ function createWindow(): BrowserWindow {
       })
 
       if (choice === 0) {
-        // 최소화 (트레이로)
         mainWindow.hide()
       } else if (choice === 1) {
-        // 완전 종료
         isQuitting = true
         app.quit()
       }
-      // choice === 2 (취소) 이면 그대로 창 유지
     }
   })
 
   return mainWindow
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // 1. 즉시 스플래시 로딩 창 생성 및 표시
+  const splash = new SplashScreen()
+  splash.create()
+
+  const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+  splash.updateProgress(15, '[A-01] Engine startup & system environment check...')
+  await delay(120)
+
+  // 2. DB 및 레포지토리 로드
+  splash.updateProgress(35, '[B-02] Mounting SQLite Database & Repositories...')
+  db = new AppDatabase()
+  historyRepo = new HistoryRepository(db)
+  bookmarkRepo = new BookmarkRepository(db)
+  sessionRepo = new SessionRepository(db)
+  workspaceRepo = new WorkspaceRepository(db)
+  settingsRepo = new SettingsRepository(db)
+  await delay(120)
+
+  // 3. IPC 모듈 등록
+  splash.updateProgress(55, '[C-03] Registering System IPC & Security Bridges...')
   registerDbIpc()
   registerSystemIpc()
+  await delay(120)
 
+  // 4. 메인 윈도우 & PTY 세션 생성
+  splash.updateProgress(75, '[D-04] Initializing Node-PTY Process Manager...')
   const mainWindow = createWindow()
   const ptyManager = new PtyManager(mainWindow)
   registerTerminalIpc(ptyManager, historyRepo)
+  await delay(120)
 
-  // macOS: Dock 아이콘 클릭 시 창 재생성
-  // registerTerminalIpc 내부에서 removeAllListeners를 호출하므로 중복 등록 방지
+  // 5. 렌더러 렌더링 완료 대기 및 스플래시 전환
+  splash.updateProgress(90, '[E-05] Loading React Workbench & Renderer UI...')
+
+  mainWindow.once('ready-to-show', async () => {
+    splash.updateProgress(100, '[Z-99] Launch Complete! Opening Workbench...')
+    await delay(200)
+    splash.close()
+    mainWindow.show()
+  })
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       const newWindow = createWindow()
       const newManager = new PtyManager(newWindow)
       registerTerminalIpc(newManager, historyRepo)
+      newWindow.show()
     } else {
       BrowserWindow.getAllWindows()[0].show()
     }
@@ -159,6 +180,7 @@ app.whenReady().then(() => {
             const newWindow = createWindow()
             const newManager = new PtyManager(newWindow)
             registerTerminalIpc(newManager, historyRepo)
+            newWindow.show()
           }
         }
       },
@@ -209,10 +231,9 @@ app.whenReady().then(() => {
   })
 })
 
-// 앱 종료 시 DB 정리
 app.on('will-quit', () => {
   try {
-    db.close()
+    db?.close()
   } catch (err) {
     console.error('[main] Failed to close DB:', err)
   }

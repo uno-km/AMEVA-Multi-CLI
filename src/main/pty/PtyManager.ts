@@ -10,16 +10,22 @@ interface PtySession {
 export class PtyManager {
   private sessions = new Map<string, PtySession>()
   private pendingBuffers = new Map<string, string>()
-  private flushTimer: NodeJS.Timeout | null = null
+  private isFlushScheduled = false
 
-  constructor(private mainWindow: BrowserWindow) {
-    this.startFlushLoop()
-  }
+  constructor(private mainWindow: BrowserWindow) {}
 
-  private startFlushLoop(): void {
-    if (this.flushTimer) return
-    this.flushTimer = setInterval(() => {
+  /**
+   * PTY 출력 데이터를 12ms 단위로 배치 전송 (Flush).
+   * 데이터가 들어왔을 때만 타이머를 시작하여 터미널 대기 시 CPU 0% 유지.
+   */
+  private scheduleFlush(): void {
+    if (this.isFlushScheduled) return
+    this.isFlushScheduled = true
+
+    setTimeout(() => {
+      this.isFlushScheduled = false
       if (this.pendingBuffers.size === 0) return
+
       this.pendingBuffers.forEach((buffer, id) => {
         if (buffer.length > 0) {
           this.safeSend('terminal-out', id, buffer)
@@ -38,13 +44,11 @@ export class PtyManager {
     try {
       this.mainWindow.webContents.send(channel, ...args)
     } catch (err) {
-      // webContents가 destroyed/invalid 상태일 수 있음
       console.error('[PtyManager] safeSend failed:', err)
     }
   }
 
   createSession(id: string, cols: number, rows: number, cwd?: string): void {
-    // 이미 세션이 존재하면 재생성하지 않음 (StrictMode double-invoke 방어)
     if (this.sessions.has(id)) {
       console.warn(`[PtyManager] Session ${id} already exists, skipping create.`)
       return
@@ -77,11 +81,13 @@ export class PtyManager {
     ptyProcess.onData((data) => {
       const current = this.pendingBuffers.get(id) || ''
       this.pendingBuffers.set(id, current + data)
+      this.scheduleFlush()
     })
 
     ptyProcess.onExit((e) => {
       this.safeSend('terminal-exit', id, e.exitCode)
       this.sessions.delete(id)
+      this.pendingBuffers.delete(id)
     })
 
     this.sessions.set(id, { id, process: ptyProcess })
@@ -125,10 +131,6 @@ export class PtyManager {
   }
 
   killAll(): void {
-    if (this.flushTimer) {
-      clearInterval(this.flushTimer)
-      this.flushTimer = null
-    }
     this.pendingBuffers.clear()
     this.sessions.forEach((_session, id) => {
       this.kill(id)
