@@ -1,12 +1,12 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react'
-import { TerminalView } from './components/TerminalView'
 import { SettingsModal } from './components/SettingsModal'
 import { useDialog } from './components/DialogProvider'
-import { useTabStore, type Tab } from './stores/tabStore'
+import { useTabStore, type Tab, type PaneNode } from './stores/tabStore'
+import { PaneRenderer } from './components/PaneRenderer'
 import { nanoid } from 'nanoid'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 타입 가드
+// 타입 가드 및 헬퍼
 // ─────────────────────────────────────────────────────────────────────────────
 function isValidTabArray(data: unknown): data is Tab[] {
   return (
@@ -18,22 +18,39 @@ function isValidTabArray(data: unknown): data is Tab[] {
         t !== null &&
         typeof (t as Tab).id === 'string' &&
         typeof (t as Tab).title === 'string' &&
-        Array.isArray((t as Tab).panes) &&
-        (t as Tab).panes.length > 0 &&
-        (t as Tab).panes.every(
-          (p) => typeof p === 'object' && p !== null && typeof p.id === 'string'
-        )
+        typeof (t as Tab).rootNode === 'object'
     )
   )
+}
+
+function refreshNodeIds(node: any): any {
+  if (!node) return node
+  if (node.type === 'pane') {
+    return { ...node, id: nanoid() }
+  }
+  if (node.type === 'split' && node.children) {
+    return {
+      ...node,
+      id: nanoid(),
+      children: node.children.map(refreshNodeIds)
+    }
+  }
+  return { ...node, id: nanoid() }
+}
+
+function getFirstPaneId(node: any): string {
+  if (node.type === 'pane') return node.id
+  if (node.children && node.children.length > 0) return getFirstPaneId(node.children[0])
+  return nanoid()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // App
 // ─────────────────────────────────────────────────────────────────────────────
-type SidebarTab = 'bookmarks' | 'history' | 'workspaces'
+type SidebarTab = 'bookmarks' | 'history' | 'snapshots'
 
 function App(): JSX.Element {
-  const { tabs, activeTabId, addTab, setActiveTab, closeTab, addPane, closePane } = useTabStore()
+  const { tabs, activeTabId, addTab, setActiveTab, closeTab } = useTabStore()
   const { confirm, prompt } = useDialog()
 
   // 북마크
@@ -41,8 +58,8 @@ function App(): JSX.Element {
   // 히스토리
   const [history, setHistory] = useState<HistoryItem[]>([])
   const [historyQuery, setHistoryQuery] = useState('')
-  // 워크스페이스
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([])
+  // 스냅샷 (기존 워크스페이스)
+  const [snapshots, setSnapshots] = useState<Workspace[]>([])
   // 사이드바
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('bookmarks')
@@ -51,9 +68,6 @@ function App(): JSX.Element {
   const [settingsOpen, setSettingsOpen] = useState(false)
   // 세션 저장 debounce 타이머
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // 패인 리사이징 상태
-  const paneAreaRef = useRef<HTMLDivElement>(null)
-  const [resizing, setResizing] = useState<{ tabId: string; prevId: string; nextId: string; startX: number; prevW: number; nextW: number } | null>(null)
 
   // ── 초기 로드 ──
   useEffect(() => {
@@ -63,9 +77,9 @@ function App(): JSX.Element {
       .then((savedTabs) => {
         if (isValidTabArray(savedTabs)) {
           const freshTabs = savedTabs.map((tab) => {
-            const freshPanes = tab.panes.map((p) => ({ ...p, id: nanoid() }))
-            const freshActivePaneId = freshPanes[0]?.id ?? nanoid()
-            return { ...tab, id: nanoid(), panes: freshPanes, activePaneId: freshActivePaneId }
+            const freshRoot = refreshNodeIds(tab.rootNode)
+            const freshActivePaneId = getFirstPaneId(freshRoot)
+            return { ...tab, id: nanoid(), rootNode: freshRoot, activePaneId: freshActivePaneId }
           })
           useTabStore.setState({ tabs: freshTabs, activeTabId: freshTabs[0].id })
         }
@@ -78,11 +92,11 @@ function App(): JSX.Element {
       .then(setBookmarks)
       .catch((err) => console.error('[App] Failed to load bookmarks:', err))
 
-    // 워크스페이스 로드
+    // 스냅샷 로드
     window.api.db
       .getWorkspaces()
-      .then(setWorkspaces)
-      .catch((err) => console.error('[App] Failed to load workspaces:', err))
+      .then(setSnapshots)
+      .catch((err) => console.error('[App] Failed to load snapshots:', err))
 
     // 설정 로드
     window.api.db
@@ -92,31 +106,6 @@ function App(): JSX.Element {
       })
       .catch((err) => console.error('[App] Failed to load settings:', err))
   }, [])
-
-  // ── 패인 리사이징 핸들러 ──
-  useEffect(() => {
-    if (!resizing) return
-    const handleMouseMove = (e: MouseEvent) => {
-      e.preventDefault()
-      if (!paneAreaRef.current) return
-      const deltaX = e.clientX - resizing.startX
-      const totalWidth = paneAreaRef.current.clientWidth
-      
-      // 전체 가중치 대비 픽셀 변화량 계산
-      // (기본 weight 1은 1 비율을 의미하므로, 전체 너비에 대한 변화율을 가중치로 환산)
-      const weightDelta = (deltaX / totalWidth) * (tabs.find(t => t.id === resizing.tabId)?.panes.reduce((sum, p) => sum + (p.weight ?? 1), 0) || 1)
-      
-      useTabStore.getState().setPaneWeight(resizing.tabId, resizing.prevId, Math.max(0.1, resizing.prevW + weightDelta))
-      useTabStore.getState().setPaneWeight(resizing.tabId, resizing.nextId, Math.max(0.1, resizing.nextW - weightDelta))
-    }
-    const handleMouseUp = () => setResizing(null)
-    window.addEventListener('mousemove', handleMouseMove)
-    window.addEventListener('mouseup', handleMouseUp)
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove)
-      window.removeEventListener('mouseup', handleMouseUp)
-    }
-  }, [resizing, tabs])
 
   // ── 탭 변경 시 세션 자동 저장 (debounce 500ms) ──
   useEffect(() => {
@@ -144,13 +133,28 @@ function App(): JSX.Element {
     }
   }, [sidebarTab, historyQuery])
 
+  // ── 새로고침 기본 동작 막기 ──
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isF5 = e.key === 'F5'
+      const isCtrlR = e.ctrlKey && e.key.toLowerCase() === 'r'
+      const isCtrlShiftR = e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'r'
+      
+      if (isF5 || isCtrlR || isCtrlShiftR) {
+        e.preventDefault()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
   // ─────────────────────────────────────────────────────────────────────────
-  // 북마크 핸들러
+  // 북마크 핸들러 (현재 활성화된 터미널에서 실행되도록 수정)
   // ─────────────────────────────────────────────────────────────────────────
   const handleAddBookmark = useCallback(async () => {
-    const name = await prompt('북마크 추가', '북마크 이름 (예: 프로덕션 서버):', 'New Bookmark')
+    const name = await prompt('명령어 묶음 추가', '북마크 이름 (예: 빌드 & 배포):', '새 명령어 묶음')
     if (!name?.trim()) return
-    const command = await prompt('명령어 입력', '실행할 명령어 (예: ssh user@host):', 'echo hello')
+    const command = await prompt('명령어 입력', '실행할 명령어 (여러 개는 && 로 연결하거나 개행 가능):', 'npm run build && echo "Done"')
     if (!command?.trim()) return
 
     const b: Bookmark = {
@@ -173,26 +177,12 @@ function App(): JSX.Element {
 
   const handleRunBookmark = useCallback(
     (b: Bookmark) => {
-      const targetPaneId = nanoid()
-      if (tabs.length === 0) {
-        const newTabId = nanoid()
-        useTabStore.setState({
-          tabs: [{ id: newTabId, title: b.name, panes: [{ id: targetPaneId, title: b.name }], activePaneId: targetPaneId }],
-          activeTabId: newTabId
-        })
-      } else {
-        useTabStore.setState({
-          tabs: tabs.map((t) =>
-            t.id === activeTabId
-              ? { ...t, panes: [...t.panes, { id: targetPaneId, title: b.name }], activePaneId: targetPaneId }
-              : t
-          )
-        })
-      }
-      // TerminalView가 마운트되어 PTY가 준비된 후 명령어 전송
-      setTimeout(() => {
-        window.api.terminal.write(targetPaneId, b.command + '\r')
-      }, 600)
+      const activeTab = tabs.find((t) => t.id === activeTabId)
+      if (!activeTab || !activeTab.activePaneId) return
+      
+      // 명령어 문자열의 실제 줄바꿈을 CR로 변환하여 전송 (여러 줄 명령어 대응)
+      const formattedCommand = b.command.replace(/\n/g, '\r') + '\r'
+      window.api.terminal.write(activeTab.activePaneId, formattedCommand)
     },
     [tabs, activeTabId]
   )
@@ -203,9 +193,8 @@ function App(): JSX.Element {
   const handleRunHistory = useCallback(
     (item: HistoryItem) => {
       const activeTab = tabs.find((t) => t.id === activeTabId)
-      if (!activeTab || activeTab.panes.length === 0) return
-      const activePaneId = activeTab.activePaneId || activeTab.panes[0].id
-      window.api.terminal.write(activePaneId, item.command + '\r')
+      if (!activeTab || !activeTab.activePaneId) return
+      window.api.terminal.write(activeTab.activePaneId, item.command + '\r')
     },
     [tabs, activeTabId]
   )
@@ -217,10 +206,10 @@ function App(): JSX.Element {
   }, [confirm])
 
   // ─────────────────────────────────────────────────────────────────────────
-  // 워크스페이스 핸들러
+  // 스냅샷(워크스페이스) 핸들러
   // ─────────────────────────────────────────────────────────────────────────
-  const handleSaveWorkspace = useCallback(async () => {
-    const name = await prompt('워크스페이스 저장', '현재 탭 레이아웃을 저장할 이름을 입력하세요:', '내 워크스페이스')
+  const handleSaveSnapshot = useCallback(async () => {
+    const name = await prompt('스냅샷 저장', '현재 터미널 분할 레이아웃을 저장할 이름을 입력하세요:', '내 레이아웃 스냅샷')
     if (!name?.trim()) return
     const ws: Workspace = {
       id: nanoid(),
@@ -229,32 +218,32 @@ function App(): JSX.Element {
         tabs: tabs.map((tab) => ({
           id: tab.id,
           title: tab.title,
-          panes: tab.panes.map((p) => ({ id: p.id, title: p.title, cwd: p.cwd }))
+          rootNode: tab.rootNode
         }))
       },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     }
     window.api.db.saveWorkspace(ws)
-    setWorkspaces((prev) => [ws, ...prev])
+    setSnapshots((prev) => [ws, ...prev])
   }, [tabs, prompt])
 
-  const handleRestoreWorkspace = useCallback(async (ws: Workspace) => {
-    if (!(await confirm('워크스페이스 복원', `"${ws.name}" 워크스페이스를 복원하시겠습니까?\n현재 열려있는 모든 탭이 닫히고 덮어씌워집니다.`))) return
+  const handleRestoreSnapshot = useCallback(async (ws: Workspace) => {
+    if (!(await confirm('스냅샷 복원', `"${ws.name}" 스냅샷을 복원하시겠습니까?\n현재 열려있는 모든 탭이 닫히고 덮어씌워집니다.`))) return
     const freshTabs: Tab[] = ws.layout.tabs.map((wt) => {
-      const freshPanes = wt.panes.map((p) => ({ ...p, id: nanoid() }))
-      const freshActivePaneId = freshPanes[0]?.id ?? nanoid()
-      return { id: nanoid(), title: wt.title, panes: freshPanes, activePaneId: freshActivePaneId }
+      const freshRoot = refreshNodeIds(wt.rootNode)
+      const freshActivePaneId = getFirstPaneId(freshRoot)
+      return { id: nanoid(), title: wt.title, rootNode: freshRoot, activePaneId: freshActivePaneId }
     })
     if (freshTabs.length === 0) return
     useTabStore.setState({ tabs: freshTabs, activeTabId: freshTabs[0].id })
   }, [confirm])
 
-  const handleDeleteWorkspace = useCallback(async (id: string, e: React.MouseEvent) => {
+  const handleDeleteSnapshot = useCallback(async (id: string, e: React.MouseEvent) => {
     e.stopPropagation()
-    if (!(await confirm('워크스페이스 삭제', '이 워크스페이스를 삭제하시겠습니까?'))) return
+    if (!(await confirm('스냅샷 삭제', '이 스냅샷을 삭제하시겠습니까?'))) return
     window.api.db.deleteWorkspace(id)
-    setWorkspaces((prev) => prev.filter((w) => w.id !== id))
+    setSnapshots((prev) => prev.filter((w) => w.id !== id))
   }, [confirm])
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -303,6 +292,13 @@ function App(): JSX.Element {
 
         <div style={{ flex: 1 }} />
         <button
+          onClick={() => window.location.reload()}
+          style={styles.iconBtn}
+          title="강력 새로고침"
+        >
+          ↻
+        </button>
+        <button
           onClick={() => setSettingsOpen(true)}
           style={styles.iconBtn}
           title="설정 (⚙)"
@@ -318,7 +314,7 @@ function App(): JSX.Element {
           <div style={styles.sidebar}>
             {/* 사이드바 탭 헤더 */}
             <div style={styles.sidebarTabs}>
-              {(['bookmarks', 'history', 'workspaces'] as SidebarTab[]).map((t) => (
+              {(['bookmarks', 'history', 'snapshots'] as SidebarTab[]).map((t) => (
                 <button
                   key={t}
                   onClick={() => setSidebarTab(t)}
@@ -329,7 +325,7 @@ function App(): JSX.Element {
                     borderBottom: sidebarTab === t ? '2px solid #007acc' : '2px solid transparent'
                   }}
                 >
-                  {t === 'bookmarks' ? '★ 북마크' : t === 'history' ? '⟳ 히스토리' : '⊞ 워크스페이스'}
+                  {t === 'bookmarks' ? '★ 북마크' : t === 'history' ? '⟳ 히스토리' : '⊞ 스냅샷'}
                 </button>
               ))}
             </div>
@@ -338,21 +334,21 @@ function App(): JSX.Element {
             {sidebarTab === 'bookmarks' && (
               <div style={styles.sidebarPanel}>
                 <div style={styles.sidebarPanelHeader}>
-                  <span style={styles.sidebarPanelTitle}>북마크</span>
+                  <span style={styles.sidebarPanelTitle}>명령어 북마크</span>
                   <button onClick={handleAddBookmark} style={styles.addBtn} title="북마크 추가">+</button>
                 </div>
                 <div style={styles.listScroll}>
                   {bookmarks.length === 0 ? (
                     <div style={styles.emptyMsg}>
                       북마크 없음<br />
-                      <span style={{ fontSize: '11px', color: '#555' }}>더블클릭으로 실행</span>
+                      <span style={{ fontSize: '11px', color: '#555' }}>더블클릭으로 현재 패인에서 실행</span>
                     </div>
                   ) : (
                     bookmarks.map((b) => (
                       <div
                         key={b.id}
                         onDoubleClick={() => handleRunBookmark(b)}
-                        title={`더블클릭으로 실행\n$ ${b.command}`}
+                        title={`더블클릭으로 현재 패인에서 실행\n$ ${b.command}`}
                         style={styles.listItem}
                         onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = '#2a2d2e' }}
                         onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
@@ -410,25 +406,25 @@ function App(): JSX.Element {
               </div>
             )}
 
-            {/* ── 워크스페이스 패널 ── */}
-            {sidebarTab === 'workspaces' && (
+            {/* ── 스냅샷 패널 ── */}
+            {sidebarTab === 'snapshots' && (
               <div style={styles.sidebarPanel}>
                 <div style={styles.sidebarPanelHeader}>
-                  <span style={styles.sidebarPanelTitle}>워크스페이스</span>
-                  <button onClick={handleSaveWorkspace} style={styles.addBtn} title="현재 레이아웃 저장">저장</button>
+                  <span style={styles.sidebarPanelTitle}>레이아웃 스냅샷</span>
+                  <button onClick={handleSaveSnapshot} style={styles.addBtn} title="현재 레이아웃 저장">저장</button>
                 </div>
                 <div style={styles.listScroll}>
-                  {workspaces.length === 0 ? (
+                  {snapshots.length === 0 ? (
                     <div style={styles.emptyMsg}>
-                      워크스페이스 없음<br />
-                      <span style={{ fontSize: '11px', color: '#555' }}>현재 탭 구성을 저장하세요</span>
+                      스냅샷 없음<br />
+                      <span style={{ fontSize: '11px', color: '#555' }}>분할된 화면을 그대로 저장해보세요!</span>
                     </div>
                   ) : (
-                    workspaces.map((ws) => (
+                    snapshots.map((ws) => (
                       <div
                         key={ws.id}
-                        onDoubleClick={() => handleRestoreWorkspace(ws)}
-                        title={`더블클릭으로 복원\n탭 수: ${ws.layout.tabs.length}\n저장: ${new Date(ws.updatedAt).toLocaleDateString('ko-KR')}`}
+                        onDoubleClick={() => handleRestoreSnapshot(ws)}
+                        title={`더블클릭으로 복원\n저장: ${new Date(ws.updatedAt).toLocaleDateString('ko-KR')}`}
                         style={styles.listItem}
                         onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = '#2a2d2e' }}
                         onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
@@ -436,11 +432,11 @@ function App(): JSX.Element {
                         <div style={{ flex: 1, overflow: 'hidden' }}>
                           <div style={styles.listItemText}>⊞ {ws.name}</div>
                           <div style={{ fontSize: '10px', color: '#555' }}>
-                            탭 {ws.layout.tabs.length}개 · {new Date(ws.updatedAt).toLocaleDateString('ko-KR')}
+                            {new Date(ws.updatedAt).toLocaleDateString('ko-KR')}
                           </div>
                         </div>
                         <button
-                          onClick={(e) => handleDeleteWorkspace(ws.id, e)}
+                          onClick={(e) => handleDeleteSnapshot(ws.id, e)}
                           style={styles.deleteBtn}
                           title="삭제"
                         >×</button>
@@ -453,83 +449,25 @@ function App(): JSX.Element {
           </div>
         )}
 
-        {/* ── 패인 영역 ── */}
-        <div style={styles.paneArea} ref={paneAreaRef}>
-          {/* 패인 탭 바 (패인 2개 이상일 때) */}
-          {activeTab && activeTab.panes.length > 1 && (
-            <div style={styles.paneTabBar}>
-              {activeTab.panes.map((pane) => (
-                <div
-                  key={pane.id}
-                  style={{
-                    ...styles.paneTabItem,
-                    background: pane.id === activeTab.activePaneId ? '#252526' : 'transparent',
-                    color: pane.id === activeTab.activePaneId ? '#fff' : '#666'
-                  }}
-                >
-                  <span>{pane.title}</span>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); closePane(activeTab.id, pane.id) }}
-                    style={styles.closeBtn}
-                    title="패인 닫기"
-                  >×</button>
-                </div>
-              ))}
-              <button onClick={() => addPane(activeTabId)} style={styles.newTabBtn} title="패인 추가">+</button>
+        {/* ── 트리 기반 패인 렌더링 영역 ── */}
+        <div style={styles.paneArea}>
+          {tabs.map((tab) => (
+            <div
+              key={tab.id}
+              style={{
+                width: '100%',
+                height: '100%',
+                display: tab.id === activeTabId ? 'flex' : 'none',
+              }}
+            >
+              <PaneRenderer
+                tabId={tab.id}
+                node={tab.rootNode}
+                activePaneId={tab.activePaneId}
+                settings={settings}
+              />
             </div>
-          )}
-
-          {/* 터미널 패인 컨텐츠 */}
-          <div style={styles.paneContent}>
-            {tabs.map((tab) => (
-              <div
-                key={tab.id}
-                style={{ ...styles.paneRow, display: tab.id === activeTabId ? 'flex' : 'none' }}
-              >
-                {tab.panes.map((pane, i) => (
-                  <React.Fragment key={pane.id}>
-                    <div style={{ ...styles.paneCell, flex: pane.weight ?? 1 }}>
-                      <TerminalView
-                        key={pane.id}
-                        paneId={pane.id}
-                        settings={settings}
-                        onExit={(code) => {
-                          if (code !== 0) console.warn(`[App] Pane ${pane.id} exited with code ${code}`)
-                        }}
-                      />
-                    </div>
-                    {/* 리사이즈 핸들러 */}
-                    {i < tab.panes.length - 1 && (
-                      <div
-                        style={styles.resizer}
-                        onMouseDown={(e) => {
-                          e.preventDefault()
-                          setResizing({
-                            tabId: tab.id,
-                            prevId: tab.panes[i].id,
-                            nextId: tab.panes[i+1].id,
-                            startX: e.clientX,
-                            prevW: tab.panes[i].weight ?? 1,
-                            nextW: tab.panes[i+1].weight ?? 1
-                          })
-                        }}
-                      />
-                    )}
-                  </React.Fragment>
-                ))}
-                {/* 패인 1개일 때도 분할 버튼 */}
-                {tab.panes.length === 1 && (
-                  <button
-                    onClick={() => addPane(tab.id)}
-                    style={styles.splitBtn}
-                    title="화면 분할"
-                  >
-                    ⊞
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
+          ))}
         </div>
       </div>
 
@@ -638,32 +576,7 @@ const styles: Record<string, React.CSSProperties> = {
     color: 'var(--text-main)', fontSize: '12px', borderRadius: '4px', outline: 'none',
     transition: 'border-color 0.15s ease'
   },
-  paneArea: { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg-base)' },
-  paneTabBar: {
-    display: 'flex', background: 'var(--bg-panel)',
-    borderBottom: '1px solid var(--border-light)', flexShrink: 0
-  },
-  paneTabItem: {
-    display: 'flex', alignItems: 'center', gap: '6px',
-    padding: '6px 12px', cursor: 'pointer',
-    fontSize: '12px', borderRight: '1px solid var(--border-light)',
-    transition: 'all 0.15s ease'
-  },
-  paneContent: { flex: 1, display: 'flex', overflow: 'hidden' },
-  paneRow: { flex: 1, overflow: 'hidden' },
-  paneCell: {
-    flex: 1, display: 'flex', flexDirection: 'column',
-    borderRight: '1px solid var(--border-light)', overflow: 'hidden'
-  },
-  splitBtn: {
-    width: '32px', background: 'var(--bg-panel)', color: 'var(--text-muted)',
-    border: 'none', borderLeft: '1px solid var(--border-light)',
-    cursor: 'pointer', fontSize: '16px', flexShrink: 0, transition: 'all 0.15s ease',
-  },
-  resizer: {
-    width: '2px', background: 'var(--border-light)', cursor: 'col-resize', flexShrink: 0,
-    transition: 'background 0.15s ease', zIndex: 10
-  }
+  paneArea: { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg-base)' }
 }
 
 export default App

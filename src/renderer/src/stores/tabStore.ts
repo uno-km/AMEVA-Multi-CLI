@@ -1,17 +1,22 @@
 import { create } from 'zustand'
 import { nanoid } from 'nanoid'
 
-export interface Pane {
+export type SplitDirection = 'horizontal' | 'vertical' // horizontal: left/right columns, vertical: top/bottom rows
+
+export interface PaneNode {
   id: string
-  title: string
+  type: 'pane' | 'split'
+  title?: string
   cwd?: string
-  weight?: number
+  direction?: SplitDirection
+  children?: PaneNode[]
+  weight?: number // relative size in flex layout
 }
 
 export interface Tab {
   id: string
   title: string
-  panes: Pane[]
+  rootNode: PaneNode
   activePaneId: string
 }
 
@@ -21,21 +26,85 @@ interface TabStore {
   addTab: () => void
   closeTab: (id: string) => void
   setActiveTab: (id: string) => void
+  setActivePane: (tabId: string, paneId: string) => void
   addPane: (tabId: string) => void
+  splitPane: (tabId: string, targetPaneId: string, direction: SplitDirection, insertAfter?: boolean) => void
+  movePane: (tabId: string, sourcePaneId: string, targetPaneId: string, direction: SplitDirection, insertAfter: boolean) => void
   closePane: (tabId: string, paneId: string) => void
   renameTab: (tabId: string, title: string) => void
   getActiveTab: () => Tab | undefined
-  setPaneWeight: (tabId: string, paneId: string, weight: number) => void
+  setPaneWeight: (tabId: string, nodeId: string, weight: number) => void
 }
 
+const createDefaultPane = (): PaneNode => ({
+  id: nanoid(),
+  type: 'pane',
+  title: 'Terminal',
+  weight: 1
+})
+
 const createDefaultTab = (): Tab => {
-  const paneId = nanoid()
+  const root = createDefaultPane()
   return {
     id: nanoid(),
     title: 'Terminal',
-    panes: [{ id: paneId, title: 'Terminal', weight: 1 }],
-    activePaneId: paneId
+    rootNode: root,
+    activePaneId: root.id
   }
+}
+
+// Tree Helpers
+function removeNode(node: PaneNode, targetId: string): PaneNode | null {
+  if (node.id === targetId) return null
+  if (node.type === 'split' && node.children) {
+    const newChildren = node.children
+      .map(c => removeNode(c, targetId))
+      .filter((c): c is PaneNode => c !== null)
+    
+    if (newChildren.length === 0) return null
+    if (newChildren.length === 1) {
+      return { ...newChildren[0], weight: node.weight }
+    }
+    return { ...node, children: newChildren }
+  }
+  return node
+}
+
+function splitNodeTree(node: PaneNode, targetId: string, direction: SplitDirection, insertAfter: boolean, newPane: PaneNode): PaneNode {
+  if (node.id === targetId) {
+    return {
+      id: nanoid(),
+      type: 'split',
+      direction,
+      weight: node.weight,
+      children: insertAfter ? [{ ...node, weight: 1 }, newPane] : [newPane, { ...node, weight: 1 }]
+    }
+  }
+  if (node.type === 'split' && node.children) {
+    return {
+      ...node,
+      children: node.children.map(c => splitNodeTree(c, targetId, direction, insertAfter, newPane))
+    }
+  }
+  return node
+}
+
+function updateNodeWeight(node: PaneNode, targetId: string, weight: number): PaneNode {
+  if (node.id === targetId) {
+    return { ...node, weight }
+  }
+  if (node.type === 'split' && node.children) {
+    return {
+      ...node,
+      children: node.children.map(c => updateNodeWeight(c, targetId, weight))
+    }
+  }
+  return node
+}
+
+function getAllPaneIds(node: PaneNode): string[] {
+  if (node.type === 'pane') return [node.id]
+  return node.children ? node.children.flatMap(getAllPaneIds) : []
 }
 
 export const useTabStore = create<TabStore>((set, get) => {
@@ -54,7 +123,6 @@ export const useTabStore = create<TabStore>((set, get) => {
       set((state) => {
         const newTabs = state.tabs.filter((t) => t.id !== id)
         if (newTabs.length === 0) {
-          // 탭이 0개가 되면 새 기본 탭을 자동 생성 (빈 탭으로 인한 크래시 방지)
           const fallback = createDefaultTab()
           return { tabs: [fallback], activeTabId: fallback.id }
         }
@@ -65,16 +133,70 @@ export const useTabStore = create<TabStore>((set, get) => {
 
     setActiveTab: (id) => set({ activeTabId: id }),
 
+    setActivePane: (tabId, paneId) =>
+      set((state) => ({
+        tabs: state.tabs.map((t) => (t.id === tabId ? { ...t, activePaneId: paneId } : t))
+      })),
+
     addPane: (tabId) =>
       set((state) => {
         const newTabs = state.tabs.map((t) => {
           if (t.id === tabId) {
-            const newPaneId = nanoid()
-            return {
-              ...t,
-              panes: [...t.panes, { id: newPaneId, title: 'Terminal', weight: 1 }],
-              activePaneId: newPaneId
+            const newPane = createDefaultPane()
+            let newRoot = t.rootNode
+            if (newRoot.type === 'split' && newRoot.direction === 'horizontal' && newRoot.children) {
+              newRoot = { ...newRoot, children: [...newRoot.children, newPane] }
+            } else {
+              newRoot = {
+                id: nanoid(),
+                type: 'split',
+                direction: 'horizontal',
+                weight: newRoot.weight,
+                children: [{ ...newRoot, weight: 1 }, newPane]
+              }
             }
+            return { ...t, rootNode: newRoot, activePaneId: newPane.id }
+          }
+          return t
+        })
+        return { tabs: newTabs }
+      }),
+
+    splitPane: (tabId, targetPaneId, direction, insertAfter = true) =>
+      set((state) => {
+        const newTabs = state.tabs.map((t) => {
+          if (t.id === tabId) {
+            const newPane = createDefaultPane()
+            const newRoot = splitNodeTree(t.rootNode, targetPaneId, direction, insertAfter, newPane)
+            return { ...t, rootNode: newRoot, activePaneId: newPane.id }
+          }
+          return t
+        })
+        return { tabs: newTabs }
+      }),
+
+    movePane: (tabId, sourcePaneId, targetPaneId, direction, insertAfter) =>
+      set((state) => {
+        const newTabs = state.tabs.map((t) => {
+          if (t.id === tabId) {
+            let sourcePane: PaneNode | null = null
+            const findPane = (n: PaneNode): PaneNode | null => {
+              if (n.id === sourcePaneId) return n
+              if (n.type === 'split' && n.children) {
+                for (const c of n.children) {
+                  const found = findPane(c)
+                  if (found) return found
+                }
+              }
+              return null
+            }
+            sourcePane = findPane(t.rootNode)
+            if (!sourcePane) return t
+
+            let newRoot = removeNode(t.rootNode, sourcePaneId)
+            if (!newRoot) return t
+            newRoot = splitNodeTree(newRoot, targetPaneId, direction, insertAfter, { ...sourcePane, weight: 1 })
+            return { ...t, rootNode: newRoot, activePaneId: sourcePaneId }
           }
           return t
         })
@@ -85,19 +207,16 @@ export const useTabStore = create<TabStore>((set, get) => {
       set((state) => {
         const newTabs = state.tabs.map((t) => {
           if (t.id === tabId) {
-            const newPanes = t.panes.filter((p) => p.id !== paneId)
-            if (newPanes.length === 0) {
-              // 패인이 0개가 되면 새 패인 자동 생성 (탭은 유지)
-              const newPaneId = nanoid()
-              return {
-                ...t,
-                panes: [{ id: newPaneId, title: 'Terminal', weight: 1 }],
-                activePaneId: newPaneId
-              }
+            let newRoot = removeNode(t.rootNode, paneId)
+            let newActiveId = t.activePaneId
+            if (!newRoot) {
+              newRoot = createDefaultPane()
+              newActiveId = newRoot.id
+            } else if (newActiveId === paneId) {
+              const ids = getAllPaneIds(newRoot)
+              newActiveId = ids.length > 0 ? ids[ids.length - 1] : newRoot.id
             }
-            const newActivePaneId =
-              t.activePaneId === paneId ? newPanes[newPanes.length - 1].id : t.activePaneId
-            return { ...t, panes: newPanes, activePaneId: newActivePaneId }
+            return { ...t, rootNode: newRoot, activePaneId: newActiveId }
           }
           return t
         })
@@ -114,13 +233,13 @@ export const useTabStore = create<TabStore>((set, get) => {
       return tabs.find((t) => t.id === activeTabId)
     },
 
-    setPaneWeight: (tabId, paneId, weight) =>
+    setPaneWeight: (tabId, nodeId, weight) =>
       set((state) => ({
         tabs: state.tabs.map((t) => {
           if (t.id !== tabId) return t
           return {
             ...t,
-            panes: t.panes.map((p) => (p.id === paneId ? { ...p, weight } : p))
+            rootNode: updateNodeWeight(t.rootNode, nodeId, weight)
           }
         })
       }))

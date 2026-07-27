@@ -11,9 +11,10 @@ interface Props {
   paneId: string
   settings: AppSettings
   onExit?: (exitCode: number) => void
+  onFocus?: () => void
 }
 
-export const TerminalView: React.FC<Props> = ({ paneId, settings, onExit }) => {
+export const TerminalView: React.FC<Props> = ({ paneId, settings, onExit, onFocus }) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
@@ -24,10 +25,18 @@ export const TerminalView: React.FC<Props> = ({ paneId, settings, onExit }) => {
   const handleFit = useCallback(() => {
     const fitAddon = fitAddonRef.current
     const term = termRef.current
-    if (!fitAddon || !term) return
+    if (!fitAddon || !term || !containerRef.current) return
+
+    // DOM이 아직 화면에 제대로 렌더링되지 않았거나 너무 작으면 무시 (Windows conpty 버그 방지)
+    if (containerRef.current.clientWidth < 50 || containerRef.current.clientHeight < 50) {
+      return
+    }
+
     try {
       fitAddon.fit()
-      window.api.terminal.resize(paneId, term.cols, term.rows)
+      if (term.cols > 5 && term.rows > 2) {
+        window.api.terminal.resize(paneId, term.cols, term.rows)
+      }
     } catch {
       // xterm이 아직 DOM에 연결되지 않았을 경우 무시
     }
@@ -87,6 +96,10 @@ export const TerminalView: React.FC<Props> = ({ paneId, settings, onExit }) => {
         setShowHistorySearch(true)
         return false
       }
+      if (e.ctrlKey && e.key.toLowerCase() === 'a') {
+        term.selectAll()
+        return false
+      }
       return true
     })
 
@@ -111,16 +124,29 @@ export const TerminalView: React.FC<Props> = ({ paneId, settings, onExit }) => {
     // window resize 이벤트 → fit
     window.addEventListener('resize', handleFit)
 
+    const handleFocus = () => {
+      onFocus?.()
+    }
+    container.addEventListener('mousedown', handleFocus, true)
+    term.textarea?.addEventListener('focus', handleFocus)
+
     // ResizeObserver: 컨테이너 div 크기 변화 감지 (패인 분할 등)
     let resizeObserver: ResizeObserver | null = null
+    let resizeTimer: NodeJS.Timeout | null = null
     if (typeof ResizeObserver !== 'undefined') {
       resizeObserver = new ResizeObserver(() => {
-        handleFit()
+        if (resizeTimer) clearTimeout(resizeTimer)
+        resizeTimer = setTimeout(() => {
+          handleFit()
+        }, 50) // DOM 레이아웃 안정화 후 fit
       })
       resizeObserver.observe(container)
     }
 
     cleanupRef.current = () => {
+      if (resizeTimer) clearTimeout(resizeTimer)
+      container.removeEventListener('mousedown', handleFocus, true)
+      term.textarea?.removeEventListener('focus', handleFocus)
       window.removeEventListener('resize', handleFit)
       resizeObserver?.disconnect()
       cleanupOnData()
@@ -148,7 +174,7 @@ export const TerminalView: React.FC<Props> = ({ paneId, settings, onExit }) => {
   }, [settings, handleFit])
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} onMouseDown={onFocus}>
       <div
         ref={containerRef}
         style={{

@@ -15,7 +15,7 @@ export interface WorkspaceLayout {
 export interface WorkspaceTab {
   id: string
   title: string
-  panes: WorkspacePane[]
+  rootNode: any
 }
 
 export interface WorkspacePane {

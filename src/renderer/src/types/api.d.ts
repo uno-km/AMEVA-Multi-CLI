@@ -70,7 +70,7 @@ declare global {
   interface WorkspaceTab {
     id: string
     title: string
-    panes: WorkspacePane[]
+    rootNode: any
   }
 
   interface WorkspacePane {

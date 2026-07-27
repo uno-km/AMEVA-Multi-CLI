@@ -77,6 +77,16 @@ function createWindow(): BrowserWindow {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
 
+  // 강력한 새로고침 차단 (F5, Ctrl+R, Ctrl+Shift+R)
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (
+      input.key === 'F5' ||
+      (input.control && input.key.toLowerCase() === 'r')
+    ) {
+      event.preventDefault()
+    }
+  })
+
   return mainWindow
 }
 
