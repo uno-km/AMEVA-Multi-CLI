@@ -23,6 +23,7 @@ declare global {
 
         getBookmarks: () => Promise<Bookmark[]>
         addBookmark: (b: Bookmark) => void
+        updateBookmark: (id: string, name: string, command: string) => void
         deleteBookmark: (id: string) => void
 
         getHistory: () => Promise<HistoryItem[]>

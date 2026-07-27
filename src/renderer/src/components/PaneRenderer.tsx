@@ -17,6 +17,8 @@ export const PaneRenderer: React.FC<Props> = React.memo(({ tabId, node, activePa
     index: number; startPos: number; prevW: number; nextW: number
   } | null>(null)
 
+  const tempWeightRef = useRef<{ prevW: number; nextW: number } | null>(null)
+
   useEffect(() => {
     if (!resizing || !containerRef.current || node.type !== 'split' || !node.children) return
 
@@ -31,14 +33,28 @@ export const PaneRenderer: React.FC<Props> = React.memo(({ tabId, node, activePa
       const totalWeight = node.children!.reduce((sum, c) => sum + (c.weight ?? 1), 0)
       const weightDelta = (delta / totalSize) * totalWeight
 
-      const childPrev = node.children![resizing.index]
-      const childNext = node.children![resizing.index + 1]
+      const newPrevW = Math.max(0.1, resizing.prevW + weightDelta)
+      const newNextW = Math.max(0.1, resizing.nextW - weightDelta)
 
-      setPaneWeight(tabId, childPrev.id, Math.max(0.1, resizing.prevW + weightDelta))
-      setPaneWeight(tabId, childNext.id, Math.max(0.1, resizing.nextW - weightDelta))
+      const childPrevNode = containerRef.current.children[resizing.index * 2] as HTMLElement
+      const childNextNode = containerRef.current.children[(resizing.index + 1) * 2] as HTMLElement
+      
+      if (childPrevNode) childPrevNode.style.flex = String(newPrevW)
+      if (childNextNode) childNextNode.style.flex = String(newNextW)
+
+      tempWeightRef.current = { prevW: newPrevW, nextW: newNextW }
     }
 
-    const handleMouseUp = () => setResizing(null)
+    const handleMouseUp = () => {
+      if (tempWeightRef.current) {
+        const childPrev = node.children![resizing.index]
+        const childNext = node.children![resizing.index + 1]
+        setPaneWeight(tabId, childPrev.id, tempWeightRef.current.prevW)
+        setPaneWeight(tabId, childNext.id, tempWeightRef.current.nextW)
+      }
+      setResizing(null)
+      tempWeightRef.current = null
+    }
 
     window.addEventListener('mousemove', handleMouseMove)
     window.addEventListener('mouseup', handleMouseUp)
@@ -94,8 +110,10 @@ export const PaneRenderer: React.FC<Props> = React.memo(({ tabId, node, activePa
   const isActive = node.id === activePaneId
 
   const handleFocus = useCallback(() => {
-    setActivePane(tabId, node.id)
-  }, [tabId, node.id, setActivePane])
+    if (!isActive) {
+      setActivePane(tabId, node.id)
+    }
+  }, [isActive, tabId, node.id, setActivePane])
 
   return (
     <div

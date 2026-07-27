@@ -35,6 +35,9 @@ function registerDbIpc(): void {
   ipcMain.on('add-bookmark', (_e, b: Parameters<typeof bookmarkRepo.add>[0]) =>
     bookmarkRepo.add(b)
   )
+  ipcMain.on('update-bookmark', (_e, id: string, name: string, command: string) =>
+    bookmarkRepo.update(id, name, command)
+  )
   ipcMain.on('delete-bookmark', (_e, id: string) => bookmarkRepo.delete(id))
 
   // ── History ──

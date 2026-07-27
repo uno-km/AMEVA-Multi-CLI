@@ -25,6 +25,11 @@ export class BookmarkRepository {
     stmt.run(bookmark)
   }
 
+  update(id: string, name: string, command: string): void {
+    const stmt = this.db.getDb().prepare('UPDATE bookmarks SET name = ?, command = ? WHERE id = ?')
+    stmt.run(name, command, id)
+  }
+
   delete(id: string): void {
     const stmt = this.db.getDb().prepare('DELETE FROM bookmarks WHERE id = ?')
     stmt.run(id)

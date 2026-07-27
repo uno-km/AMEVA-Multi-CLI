@@ -52,7 +52,13 @@ export const TerminalView: React.FC<Props> = React.memo(({ paneId, settings, onE
       fontSize: settings.fontSize ?? 14,
       allowProposedApi: true,
       scrollback: settings.scrollback ?? 5000,
-      convertEol: false
+      convertEol: false,
+      theme: {
+        background: '#1e1e1e',
+        foreground: '#cccccc',
+        cursor: '#ffffff',
+        selectionBackground: 'rgba(255, 255, 255, 0.3)'
+      }
     })
     termRef.current = term
 

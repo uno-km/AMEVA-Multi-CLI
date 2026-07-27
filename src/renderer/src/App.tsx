@@ -58,6 +58,10 @@ function App(): JSX.Element {
   // 히스토리
   const [history, setHistory] = useState<HistoryItem[]>([])
   const [historyQuery, setHistoryQuery] = useState('')
+
+  const portPanelRef = useRef<HTMLDivElement>(null)
+  const tempPortHeightRef = useRef(250)
+  
   // 스냅샷 (기존 워크스페이스)
   const [snapshots, setSnapshots] = useState<Workspace[]>([])
   // 사이드바
@@ -185,6 +189,17 @@ function App(): JSX.Element {
     setBookmarks((prev) => prev.filter((b) => b.id !== id))
   }, [confirm])
 
+  const handleEditBookmark = useCallback(async (b: Bookmark, e: React.MouseEvent) => {
+    e.stopPropagation()
+    const name = await prompt('북마크 수정', '새로운 북마크 이름을 입력하세요:', b.name)
+    if (!name?.trim()) return
+    const command = await prompt('명령어 수정', '새로운 명령어를 입력하세요 (여러 개는 && 로 연결하거나 개행 가능):', b.command, '', true)
+    if (!command?.trim()) return
+
+    window.api.db.updateBookmark(b.id, name.trim(), command.trim())
+    setBookmarks((prev) => prev.map((bm) => bm.id === b.id ? { ...bm, name: name.trim(), command: command.trim() } : bm))
+  }, [prompt])
+
   const handleRunBookmark = useCallback(
     (b: Bookmark) => {
       const activeTab = tabs.find((t) => t.id === activeTabId)
@@ -296,14 +311,18 @@ function App(): JSX.Element {
     e.preventDefault()
     const startY = e.clientY
     const startHeight = portPanelHeight
+    tempPortHeightRef.current = startHeight
 
     const handleMouseMove = (moveEvent: MouseEvent) => {
       const deltaY = startY - moveEvent.clientY
-      setPortPanelHeight(Math.max(100, Math.min(startHeight + deltaY, window.innerHeight - 150)))
+      const newH = Math.max(100, Math.min(startHeight + deltaY, window.innerHeight - 150))
+      if (portPanelRef.current) portPanelRef.current.style.height = `${newH}px`
+      tempPortHeightRef.current = newH
     }
     const handleMouseUp = () => {
       document.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('mouseup', handleMouseUp)
+      setPortPanelHeight(tempPortHeightRef.current)
     }
     document.addEventListener('mousemove', handleMouseMove)
     document.addEventListener('mouseup', handleMouseUp)
@@ -417,11 +436,18 @@ function App(): JSX.Element {
                         onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
                       >
                         <span style={styles.listItemText}>▶ {b.name}</span>
-                        <button
-                          onClick={(e) => handleDeleteBookmark(b.id, e)}
-                          style={styles.deleteBtn}
-                          title="삭제"
-                        >×</button>
+                        <div>
+                          <button
+                            onClick={(e) => handleEditBookmark(b, e)}
+                            style={{ ...styles.deleteBtn, marginRight: '4px' }}
+                            title="수정"
+                          >✏️</button>
+                          <button
+                            onClick={(e) => handleDeleteBookmark(b.id, e)}
+                            style={styles.deleteBtn}
+                            title="삭제"
+                          >×</button>
+                        </div>
                       </div>
                     ))
                   )}
@@ -511,7 +537,7 @@ function App(): JSX.Element {
             )}
 
             {/* ── 포트 매니저 패널 (사이드바 하단 고정) ── */}
-            <div style={{ borderTop: '1px solid var(--border-light)', display: 'flex', flexDirection: 'column', height: isPortManagerOpen ? `${portPanelHeight}px` : '38px', flexShrink: 0, overflow: 'hidden', background: 'var(--bg-sidebar)', position: 'relative' }}>
+            <div ref={portPanelRef} style={{ borderTop: '1px solid var(--border-light)', display: 'flex', flexDirection: 'column', height: isPortManagerOpen ? `${portPanelHeight}px` : '38px', flexShrink: 0, overflow: 'hidden', background: 'var(--bg-sidebar)', position: 'relative' }}>
               <div
                 style={{ height: '4px', cursor: 'ns-resize', background: 'transparent', position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }}
                 onMouseDown={isPortManagerOpen ? handlePortResizeMouseDown : undefined}
@@ -543,6 +569,7 @@ function App(): JSX.Element {
                       placeholder="포트 번호 또는 프로세스 검색..."
                       value={portSearchQuery}
                       onChange={(e) => setPortSearchQuery(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') refreshPorts() }}
                       style={{ ...styles.searchInput, marginTop: 0 }}
                     />
                   </div>

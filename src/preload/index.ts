@@ -71,6 +71,8 @@ const api = {
       ipcRenderer.invoke('get-bookmarks'),
     addBookmark: (b: BookmarkData): void =>
       ipcRenderer.send('add-bookmark', b),
+    updateBookmark: (id: string, name: string, command: string): void =>
+      ipcRenderer.send('update-bookmark', id, name, command),
     deleteBookmark: (id: string): void =>
       ipcRenderer.send('delete-bookmark', id),
 
