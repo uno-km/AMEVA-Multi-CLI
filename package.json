@@ -62,7 +62,8 @@
       "node_modules/node-pty/**/*"
     ],
     "win": {
-      "target": "nsis"
+      "icon": "build/icon.ico",
+      "target": "portable"
     },
     "mac": {
       "target": "dmg",
