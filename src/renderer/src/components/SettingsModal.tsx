@@ -37,8 +37,7 @@ export const SettingsModal: React.FC<Props> = ({ settings, onClose, onSave }) =>
         style={{
           width: '400px',
           display: 'flex',
-          flexDirection: 'column',
-          animation: 'fadeIn 0.15s ease forwards'
+          flexDirection: 'column'
         }}
       >
         <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border-light)' }}>
@@ -124,8 +123,7 @@ const inputStyle: React.CSSProperties = {
   color: 'var(--text-main)',
   borderRadius: '6px',
   outline: 'none',
-  fontSize: '13px',
-  transition: 'border-color 0.2s'
+  fontSize: '13px'
 }
 
 const btnBase: React.CSSProperties = {
@@ -134,8 +132,7 @@ const btnBase: React.CSSProperties = {
   cursor: 'pointer',
   fontSize: '14px',
   fontWeight: 500,
-  border: 'none',
-  transition: 'all 0.2s'
+  border: 'none'
 }
 
 const cancelBtnStyle: React.CSSProperties = {

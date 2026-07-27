@@ -69,8 +69,7 @@ export const DialogProvider: React.FC<{ children: ReactNode }> = ({ children }) 
             backdropFilter: 'blur(2px)',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center',
-            animation: 'overlayShow 0.15s ease forwards'
+            justifyContent: 'center'
           }}
           onClick={() => handleClose(dialog.type === 'prompt' ? null : false)}
         >
@@ -81,8 +80,7 @@ export const DialogProvider: React.FC<{ children: ReactNode }> = ({ children }) 
               padding: '24px',
               display: 'flex',
               flexDirection: 'column',
-              gap: '16px',
-              animation: 'fadeIn 0.15s ease forwards'
+              gap: '16px'
             }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -148,8 +146,7 @@ const btnBase: React.CSSProperties = {
   border: 'none',
   fontSize: '14px',
   fontWeight: 500,
-  cursor: 'pointer',
-  transition: 'all 0.2s ease'
+  cursor: 'pointer'
 }
 
 const cancelBtnStyle: React.CSSProperties = {

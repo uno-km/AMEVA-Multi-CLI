@@ -93,11 +93,10 @@ export const PaneRenderer: React.FC<Props> = React.memo(({ tabId, node, activePa
                   })
                 }}
                 style={{
-                  [isRow ? 'width' : 'height']: '4px',
+                  [isRow ? 'width' : 'height']: '8px',
                   background: resizing?.index === i ? 'var(--accent)' : 'var(--border-light)',
                   cursor: isRow ? 'col-resize' : 'row-resize',
-                  zIndex: 10,
-                  transition: 'background 0.2s'
+                  zIndex: 10
                 }}
               />
             )}
@@ -110,8 +109,12 @@ export const PaneRenderer: React.FC<Props> = React.memo(({ tabId, node, activePa
   const isActive = node.id === activePaneId
 
   const handleFocus = useCallback(() => {
+    console.log(`[DEBUG][PaneRenderer] handleFocus called for pane: ${node.id}, tab: ${tabId}. Currently active? ${isActive}`);
     if (!isActive) {
+      console.log(`[DEBUG][PaneRenderer] Setting active pane to: ${node.id}`);
       setActivePane(tabId, node.id)
+    } else {
+      console.log(`[DEBUG][PaneRenderer] Ignored handleFocus because pane ${node.id} is already active.`);
     }
   }, [isActive, tabId, node.id, setActivePane])
 
@@ -128,7 +131,6 @@ export const PaneRenderer: React.FC<Props> = React.memo(({ tabId, node, activePa
         border: `1px solid ${isActive ? '#00aaff' : '#333'}`,
         boxShadow: isActive ? 'inset 0 0 0 1px #00aaff, 0 0 10px rgba(0, 170, 255, 0.4)' : 'none',
         zIndex: isActive ? 5 : 1,
-        transition: 'all 0.2s ease',
         overflow: 'hidden'
       }}
     >
@@ -224,7 +226,6 @@ const DropZones: React.FC<{
   const zoneStyle: React.CSSProperties = {
     position: 'absolute',
     zIndex: 20,
-    transition: 'background 0.2s',
   }
   const highlight = 'rgba(0, 122, 204, 0.3)'
 

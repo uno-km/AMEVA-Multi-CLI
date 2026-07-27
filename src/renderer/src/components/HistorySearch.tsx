@@ -79,8 +79,7 @@ export const HistorySearch: React.FC<Props> = ({ onSelect, onClose }) => {
         justifyContent: 'center',
         paddingTop: '48px',
         background: 'rgba(0,0,0,0.6)',
-        backdropFilter: 'blur(2px)',
-        animation: 'overlayShow 0.15s ease forwards'
+        backdropFilter: 'blur(2px)'
       }}
     >
       {/* 검색 패널 - 클릭 이벤트 전파 차단 */}
@@ -92,8 +91,7 @@ export const HistorySearch: React.FC<Props> = ({ onSelect, onClose }) => {
           maxWidth: '90%',
           display: 'flex',
           flexDirection: 'column',
-          overflow: 'hidden',
-          animation: 'fadeIn 0.15s ease forwards'
+          overflow: 'hidden'
         }}
       >
         {/* 검색창 */}
@@ -154,8 +152,7 @@ export const HistorySearch: React.FC<Props> = ({ onSelect, onClose }) => {
                   padding: '10px 16px',
                   background: idx === safeIdx ? 'var(--border-focus)' : 'transparent',
                   cursor: 'pointer',
-                  borderBottom: '1px solid var(--border-light)',
-                  transition: 'background 0.1s ease'
+                  borderBottom: '1px solid var(--border-light)'
                 }}
                 onMouseEnter={() => setSelectedIdx(idx)}
               >

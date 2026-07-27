@@ -205,8 +205,9 @@ function App(): JSX.Element {
       const activeTab = tabs.find((t) => t.id === activeTabId)
       if (!activeTab || !activeTab.activePaneId) return
 
-      // 명령어 문자열의 실제 줄바꿈을 CR로 변환하여 전송 (여러 줄 명령어 대응)
-      const formattedCommand = b.command.replace(/\n/g, '\r') + '\r'
+      // 여러 줄 명령어 대응: 빈 줄과 주석(#)을 제거하고 실행 (PS1 스크립트 등에서 에러 방지)
+      const lines = b.command.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0 && !l.startsWith('#'))
+      const formattedCommand = lines.join('\r') + '\r'
       window.api.terminal.write(activeTab.activePaneId, formattedCommand)
     },
     [tabs, activeTabId]
@@ -681,23 +682,20 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex', alignItems: 'center', gap: '8px',
     padding: '0 14px', height: '38px',
     cursor: 'pointer', borderRight: '1px solid var(--border-light)',
-    fontSize: '13px', whiteSpace: 'nowrap', userSelect: 'none',
-    transition: 'all 0.15s ease', fontWeight: 500
+    fontSize: '13px', whiteSpace: 'nowrap', userSelect: 'none', fontWeight: 500
   },
   iconBtn: {
     background: 'transparent', border: 'none', color: 'var(--text-muted)',
     cursor: 'pointer', fontSize: '16px',
-    padding: '0 12px', height: '38px', transition: 'color 0.15s ease'
+    padding: '0 12px', height: '38px'
   },
   newTabBtn: {
     background: 'transparent', border: 'none', color: 'var(--text-muted)',
-    cursor: 'pointer', fontSize: '18px', padding: '0 14px', height: '38px',
-    transition: 'color 0.15s ease'
+    cursor: 'pointer', fontSize: '18px', padding: '0 14px', height: '38px'
   },
   closeBtn: {
     background: 'transparent', border: 'none', color: 'var(--text-muted)',
-    cursor: 'pointer', fontSize: '14px', padding: '0 4px', lineHeight: '1',
-    transition: 'color 0.15s ease'
+    cursor: 'pointer', fontSize: '14px', padding: '0 4px', lineHeight: '1'
   },
   body: { flex: 1, display: 'flex', overflow: 'hidden' },
   sidebar: {
@@ -712,7 +710,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   sidebarTabBtn: {
     flex: 1, border: 'none', cursor: 'pointer',
-    padding: '8px 4px', fontSize: '11px', transition: 'all 0.15s ease',
+    padding: '8px 4px', fontSize: '11px',
     fontWeight: 600, background: 'transparent'
   },
   sidebarPanel: { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' },
@@ -724,20 +722,19 @@ const styles: Record<string, React.CSSProperties> = {
   sidebarPanelTitle: { fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase' },
   addBtn: {
     background: 'transparent', border: '1px solid var(--border-light)', color: 'var(--text-main)',
-    cursor: 'pointer', fontSize: '12px', padding: '4px 10px', borderRadius: '4px',
-    transition: 'all 0.15s ease', fontWeight: 500
+    cursor: 'pointer', fontSize: '12px', padding: '4px 10px', borderRadius: '4px', fontWeight: 500
   },
   listScroll: { flex: 1, overflowY: 'auto', padding: '8px 0' },
   listItem: {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
     padding: '8px 14px', cursor: 'pointer',
-    borderBottom: '1px solid var(--border-light)', transition: 'background 0.15s ease'
+    borderBottom: '1px solid var(--border-light)'
   },
   listItemText: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, color: 'var(--text-main)' },
   deleteBtn: {
     background: 'transparent', border: 'none', color: 'var(--danger)',
     cursor: 'pointer', fontSize: '14px', padding: '0 4px', flexShrink: 0,
-    opacity: 0.5, transition: 'opacity 0.15s ease'
+    opacity: 0.5
   },
   emptyMsg: {
     padding: '30px 20px', color: 'var(--text-muted)', fontSize: '13px',
@@ -746,8 +743,7 @@ const styles: Record<string, React.CSSProperties> = {
   searchInput: {
     margin: '10px 12px', padding: '6px 10px',
     background: 'var(--bg-base)', border: '1px solid var(--border-light)',
-    color: 'var(--text-main)', fontSize: '12px', borderRadius: '4px', outline: 'none',
-    transition: 'border-color 0.15s ease'
+    color: 'var(--text-main)', fontSize: '12px', borderRadius: '4px', outline: 'none'
   },
   paneArea: { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg-base)' }
 }
