@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, Tray, Menu, dialog } from 'electron'
 import { join } from 'path'
+import icon from '../../build/icon.png?asset'
 import { registerTerminalIpc } from './ipc/terminalIpc'
 import { registerSystemIpc } from './ipc/systemIpc'
 import { PtyManager } from './pty/PtyManager'
@@ -69,7 +70,7 @@ function createWindow(): BrowserWindow {
     height: 800,
     minWidth: 600,
     minHeight: 400,
-    icon: join(__dirname, '../../build/icon.png'),
+    icon: icon,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -144,8 +145,7 @@ app.whenReady().then(() => {
     }
   })
 
-  const iconPath = join(__dirname, '../../build/icon.png')
-  tray = new Tray(iconPath)
+  tray = new Tray(icon)
   
   const updateTrayMenu = (openTabs: { id: string; title: string; isActive: boolean }[] = []) => {
     const template: Electron.MenuItemConstructorOptions[] = [
