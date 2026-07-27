@@ -62,6 +62,8 @@ function App(): JSX.Element {
   const portPanelRef = useRef<HTMLDivElement>(null)
   const tempPortHeightRef = useRef(250)
   
+  const prevTrayDataRef = useRef<string>('')
+  
   // Sync tabs to Tray
   useEffect(() => {
     const trayData = tabs.map(t => ({
@@ -69,7 +71,11 @@ function App(): JSX.Element {
       title: t.title || 'Terminal',
       isActive: t.id === activeTabId
     }))
-    window.api.system.updateTray(trayData)
+    const newTrayStr = JSON.stringify(trayData)
+    if (prevTrayDataRef.current !== newTrayStr) {
+      window.api.system.updateTray(trayData)
+      prevTrayDataRef.current = newTrayStr
+    }
   }, [tabs, activeTabId])
 
   // 스냅샷 (기존 워크스페이스)

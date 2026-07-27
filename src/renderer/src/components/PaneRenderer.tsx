@@ -118,6 +118,10 @@ export const PaneRenderer: React.FC<Props> = React.memo(({ tabId, node, activePa
     }
   }, [isActive, tabId, node.id, setActivePane])
 
+  const handleTitleChange = useCallback((title: string) => {
+    useTabStore.getState().renamePane(tabId, node.id, title)
+  }, [tabId, node.id])
+
   return (
     <div
       style={{
@@ -190,9 +194,7 @@ export const PaneRenderer: React.FC<Props> = React.memo(({ tabId, node, activePa
           paneId={node.id}
           settings={settings}
           onFocus={handleFocus}
-          onTitleChange={(title) => {
-            useTabStore.getState().renamePane(tabId, node.id, title)
-          }}
+          onTitleChange={handleTitleChange}
         />
         <DropZones tabId={tabId} paneId={node.id} movePane={movePane} />
       </div>
