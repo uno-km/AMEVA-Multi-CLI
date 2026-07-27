@@ -109,14 +109,11 @@ export const PaneRenderer: React.FC<Props> = React.memo(({ tabId, node, activePa
   const isActive = node.id === activePaneId
 
   const handleFocus = useCallback(() => {
-    console.log(`[DEBUG][PaneRenderer] handleFocus called for pane: ${node.id}, tab: ${tabId}. Currently active? ${isActive}`);
-    if (!isActive) {
-      console.log(`[DEBUG][PaneRenderer] Setting active pane to: ${node.id}`);
+    const currentActive = useTabStore.getState().tabs.find(t => t.id === tabId)?.activePaneId
+    if (currentActive !== node.id) {
       setActivePane(tabId, node.id)
-    } else {
-      console.log(`[DEBUG][PaneRenderer] Ignored handleFocus because pane ${node.id} is already active.`);
     }
-  }, [isActive, tabId, node.id, setActivePane])
+  }, [tabId, node.id, setActivePane])
 
   const handleTitleChange = useCallback((title: string) => {
     useTabStore.getState().renamePane(tabId, node.id, title)

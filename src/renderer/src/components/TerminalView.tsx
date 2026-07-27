@@ -21,6 +21,14 @@ export const TerminalView: React.FC<Props> = React.memo(({ paneId, settings, onE
   const fitAddonRef = useRef<FitAddon | null>(null)
   const cleanupRef = useRef<(() => void) | null>(null)
 
+  const onFocusRef = useRef(onFocus)
+  const onTitleChangeRef = useRef(onTitleChange)
+
+  useEffect(() => {
+    onFocusRef.current = onFocus
+    onTitleChangeRef.current = onTitleChange
+  }, [onFocus, onTitleChange])
+
   const [showHistorySearch, setShowHistorySearch] = useState(false)
 
   const handleFit = useCallback(() => {
@@ -34,9 +42,13 @@ export const TerminalView: React.FC<Props> = React.memo(({ paneId, settings, onE
     }
 
     try {
+      const prevCols = term.cols
+      const prevRows = term.rows
       fitAddon.fit()
       if (term.cols > 5 && term.rows > 2) {
-        window.api.terminal.resize(paneId, term.cols, term.rows)
+        if (term.cols !== prevCols || term.rows !== prevRows) {
+          window.api.terminal.resize(paneId, term.cols, term.rows)
+        }
       }
     } catch {
       // xterm이 아직 DOM에 연결되지 않았을 경우 무시
@@ -136,12 +148,12 @@ export const TerminalView: React.FC<Props> = React.memo(({ paneId, settings, onE
 
     const onTitleDispose = term.onTitleChange((title) => {
       if (title && title.trim().length > 0) {
-        onTitleChange?.(title)
+        onTitleChangeRef.current?.(title)
       }
     })
 
     const handleFocus = () => {
-      onFocus?.()
+      onFocusRef.current?.()
     }
     container.addEventListener('mousedown', handleFocus, true)
     term.textarea?.addEventListener('focus', handleFocus)
