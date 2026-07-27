@@ -1,102 +1,176 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useCallback, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { SearchAddon } from '@xterm/addon-search'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
 import '@xterm/xterm/css/xterm.css'
+import { HistorySearch } from './HistorySearch'
 
 interface Props {
   paneId: string
+  settings: AppSettings
   onExit?: (exitCode: number) => void
 }
 
-export const TerminalView: React.FC<Props> = ({ paneId, onExit }) => {
-  const terminalRef = useRef<HTMLDivElement>(null)
-  const termInstance = useRef<Terminal | null>(null)
-  const ptyId = useRef<string>(paneId)
+export const TerminalView: React.FC<Props> = ({ paneId, settings, onExit }) => {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const termRef = useRef<Terminal | null>(null)
+  const fitAddonRef = useRef<FitAddon | null>(null)
+  const cleanupRef = useRef<(() => void) | null>(null)
+
+  const [showHistorySearch, setShowHistorySearch] = useState(false)
+
+  const handleFit = useCallback(() => {
+    const fitAddon = fitAddonRef.current
+    const term = termRef.current
+    if (!fitAddon || !term) return
+    try {
+      fitAddon.fit()
+      window.api.terminal.resize(paneId, term.cols, term.rows)
+    } catch {
+      // xterm이 아직 DOM에 연결되지 않았을 경우 무시
+    }
+  }, [paneId])
 
   useEffect(() => {
-    if (!terminalRef.current) return
+    const container = containerRef.current
+    if (!container) return
 
     const term = new Terminal({
-      cursorBlink: true,
-      fontFamily: '"Fira Code", monospace',
-      fontSize: 14,
-      allowProposedApi: true
+      cursorBlink: settings.cursorBlink ?? true,
+      fontFamily: settings.fontFamily || '"Fira Code", "Cascadia Code", "Consolas", monospace',
+      fontSize: settings.fontSize ?? 14,
+      allowProposedApi: true,
+      scrollback: settings.scrollback ?? 5000,
+      convertEol: false
     })
-    termInstance.current = term
+    termRef.current = term
 
     const fitAddon = new FitAddon()
+    fitAddonRef.current = fitAddon
+
     term.loadAddon(fitAddon)
     term.loadAddon(new WebLinksAddon())
     term.loadAddon(new SearchAddon())
-    
-    const unicode11Addon = new Unicode11Addon()
-    term.loadAddon(unicode11Addon)
+
+    const unicode11 = new Unicode11Addon()
+    term.loadAddon(unicode11)
     term.unicode.activeVersion = '11'
 
-    term.open(terminalRef.current)
-    fitAddon.fit()
+    term.open(container)
+    // 렌더링 사이클 후 fit 실행 (DOM이 실제로 렌더된 이후)
+    requestAnimationFrame(() => {
+      fitAddon.fit()
+      window.api.terminal.create(paneId, term.cols, term.rows)
+    })
 
-    // @ts-ignore
-    window.api.terminal.create(ptyId.current, term.cols, term.rows)
-
+    // Ctrl+C: 선택 영역 있으면 클립보드 복사, 없으면 SIGINT 전달
     term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
-      if (e.ctrlKey && e.key.toLowerCase() === 'c' && e.type === 'keydown') {
+      if (e.type !== 'keydown') return true
+      if (e.ctrlKey && e.key.toLowerCase() === 'c') {
         if (term.hasSelection()) {
-          navigator.clipboard.writeText(term.getSelection())
+          navigator.clipboard.writeText(term.getSelection()).catch(console.error)
           term.clearSelection()
           return false
         }
-        return true // 빈 땅이면 xterm이 네이티브로 \x03을 보내도록 위임
+        return true
       }
-      if (e.ctrlKey && e.key === 'v' && e.type === 'keydown') {
-        navigator.clipboard.readText().then(text => {
-          // @ts-ignore
-          window.api.terminal.write(ptyId.current, text)
-        }).catch(err => console.error('Failed to read clipboard', err))
+      if (e.ctrlKey && e.key.toLowerCase() === 'v') {
+        navigator.clipboard
+          .readText()
+          .then((text) => window.api.terminal.write(paneId, text))
+          .catch((err) => console.error('[TerminalView] Clipboard read failed:', err))
+        return false
+      }
+      if (e.ctrlKey && e.key.toLowerCase() === 'r') {
+        setShowHistorySearch(true)
         return false
       }
       return true
     })
 
-    term.onData((data) => {
-      // @ts-ignore
-      window.api.terminal.write(ptyId.current, data)
+    // 사용자 입력 → PTY
+    const onDataDispose = term.onData((data) => {
+      window.api.terminal.write(paneId, data)
     })
 
-    const handleResize = () => {
-      fitAddon.fit()
-      // @ts-ignore
-      window.api.terminal.resize(ptyId.current, term.cols, term.rows)
-    }
-
-    window.addEventListener('resize', handleResize)
-
-    // @ts-ignore
-    window.api.terminal.onData((id, data) => {
-      if (id === ptyId.current) {
-        term.write(data)
-      }
+    // PTY 출력 → xterm
+    const cleanupOnData = window.api.terminal.onData((id, data) => {
+      if (id === paneId) term.write(data)
     })
 
-    // @ts-ignore
-    window.api.terminal.onExit((id, exitCode) => {
-      if (id === ptyId.current) {
+    // PTY 종료
+    const cleanupOnExit = window.api.terminal.onExit((id, exitCode) => {
+      if (id === paneId) {
+        term.write(`\r\n\x1b[90m[프로세스가 종료되었습니다 (코드: ${exitCode})]\x1b[0m\r\n`)
         onExit?.(exitCode)
       }
     })
 
-    return () => {
-      window.removeEventListener('resize', handleResize)
-      // @ts-ignore
-      window.api.terminal.kill(ptyId.current)
-      term.dispose()
+    // window resize 이벤트 → fit
+    window.addEventListener('resize', handleFit)
+
+    // ResizeObserver: 컨테이너 div 크기 변화 감지 (패인 분할 등)
+    let resizeObserver: ResizeObserver | null = null
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(() => {
+        handleFit()
+      })
+      resizeObserver.observe(container)
     }
-  }, [])
+
+    cleanupRef.current = () => {
+      window.removeEventListener('resize', handleFit)
+      resizeObserver?.disconnect()
+      cleanupOnData()
+      cleanupOnExit()
+      onDataDispose.dispose()
+      window.api.terminal.kill(paneId)
+      term.dispose()
+      termRef.current = null
+      fitAddonRef.current = null
+    }
+
+    return () => {
+      cleanupRef.current?.()
+      cleanupRef.current = null
+    }
+  }, [paneId, handleFit]) // settings는 초기화 시에만 적용 (동적 업데이트는 아래 useEffect 사용)
+
+  useEffect(() => {
+    if (!termRef.current) return
+    termRef.current.options.fontSize = settings.fontSize ?? 14
+    termRef.current.options.fontFamily = settings.fontFamily || '"Fira Code", "Cascadia Code", "Consolas", monospace'
+    termRef.current.options.cursorBlink = settings.cursorBlink ?? true
+    termRef.current.options.scrollback = settings.scrollback ?? 5000
+    handleFit()
+  }, [settings, handleFit])
 
   return (
-    <div ref={terminalRef} style={{ width: '100%', height: '100%', overflow: 'hidden', padding: 10, boxSizing: 'border-box', backgroundColor: '#000' }} />
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+      <div
+        ref={containerRef}
+        style={{
+          width: '100%',
+          height: '100%',
+          overflow: 'hidden',
+          backgroundColor: '#1e1e1e'
+        }}
+      />
+      {showHistorySearch && (
+        <HistorySearch
+          onSelect={(cmd) => {
+            window.api.terminal.write(paneId, cmd + '\r')
+            setShowHistorySearch(false)
+            termRef.current?.focus()
+          }}
+          onClose={() => {
+            setShowHistorySearch(false)
+            termRef.current?.focus()
+          }}
+        />
+      )}
+    </div>
   )
 }

@@ -20,6 +20,7 @@ export class BookmarkRepository {
     const stmt = this.db.getDb().prepare(`
       INSERT INTO bookmarks (id, name, type, command, createdAt)
       VALUES (@id, @name, @type, @command, @createdAt)
+      ON CONFLICT(id) DO NOTHING
     `)
     stmt.run(bookmark)
   }

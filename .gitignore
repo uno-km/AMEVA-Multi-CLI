@@ -33,3 +33,19 @@ pnpm-debug.log*
 # OS
 .DS_Store
 Thumbs.db
+
+# tests
+test-results/
+playwright-report/
+coverage/
+
+# SQLite DB (로컬 사용자 데이터)
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# TypeScript build info
+*.tsbuildinfo
+
+# ESLint output
+eslint_output.txt

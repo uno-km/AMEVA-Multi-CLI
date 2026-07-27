@@ -7,14 +7,11 @@
     "allowSyntheticDefaultImports": true,
     "strict": true,
     "baseUrl": ".",
-    "paths": {
-      "@shared/*": ["src/shared/*"]
-    }
+    "paths": {}
   },
   "include": [
     "src/main/**/*",
     "src/preload/**/*",
-    "src/shared/**/*",
     "electron.vite.config.ts"
   ]
 }

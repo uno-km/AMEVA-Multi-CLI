@@ -1,15 +1,7 @@
 import { AppDatabase } from '../Database'
 
 export class SessionRepository {
-  constructor(private db: AppDatabase) {
-    this.db.getDb().exec(`
-      CREATE TABLE IF NOT EXISTS sessions (
-        id TEXT PRIMARY KEY,
-        data TEXT,
-        updatedAt TEXT
-      );
-    `)
-  }
+  constructor(private db: AppDatabase) {}
 
   saveSession<T>(id: string, data: T): void {
     const stmt = this.db.getDb().prepare(`
@@ -23,6 +15,17 @@ export class SessionRepository {
   getSession<T>(id: string): T | null {
     const stmt = this.db.getDb().prepare('SELECT data FROM sessions WHERE id = ?')
     const row = stmt.get(id) as { data: string } | undefined
-    return row ? JSON.parse(row.data) : null
+    if (!row) return null
+    try {
+      return JSON.parse(row.data) as T
+    } catch {
+      console.error(`[SessionRepository] Failed to parse session data for id="${id}"`)
+      return null
+    }
+  }
+
+  deleteSession(id: string): void {
+    const stmt = this.db.getDb().prepare('DELETE FROM sessions WHERE id = ?')
+    stmt.run(id)
   }
 }

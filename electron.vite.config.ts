@@ -12,8 +12,8 @@ export default defineConfig({
   renderer: {
     resolve: {
       alias: {
-        '@renderer': resolve('src/renderer/src'),
-        '@shared': resolve('src/shared')
+        '@renderer': resolve('src/renderer/src')
+        // @shared alias 제거: src/shared 디렉토리가 존재하지 않아 import 시 에러 발생
       }
     },
     plugins: [react()]
