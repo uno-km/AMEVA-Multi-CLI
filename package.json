@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@electron/remote": "^2.1.2",
+    "@xterm/addon-canvas": "^0.7.0",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/addon-search": "^0.15.0",
     "@xterm/addon-unicode11": "^0.8.0",

@@ -9,8 +9,25 @@ interface PtySession {
 
 export class PtyManager {
   private sessions = new Map<string, PtySession>()
+  private pendingBuffers = new Map<string, string>()
+  private flushTimer: NodeJS.Timeout | null = null
 
-  constructor(private mainWindow: BrowserWindow) {}
+  constructor(private mainWindow: BrowserWindow) {
+    this.startFlushLoop()
+  }
+
+  private startFlushLoop(): void {
+    if (this.flushTimer) return
+    this.flushTimer = setInterval(() => {
+      if (this.pendingBuffers.size === 0) return
+      this.pendingBuffers.forEach((buffer, id) => {
+        if (buffer.length > 0) {
+          this.safeSend('terminal-out', id, buffer)
+        }
+      })
+      this.pendingBuffers.clear()
+    }, 12) // ~80fps batching
+  }
 
   /**
    * mainWindow가 이미 파괴됐는지 안전하게 확인 후 IPC 전송.
@@ -58,7 +75,8 @@ export class PtyManager {
     }
 
     ptyProcess.onData((data) => {
-      this.safeSend('terminal-out', id, data)
+      const current = this.pendingBuffers.get(id) || ''
+      this.pendingBuffers.set(id, current + data)
     })
 
     ptyProcess.onExit((e) => {
@@ -94,6 +112,7 @@ export class PtyManager {
   }
 
   kill(id: string): void {
+    this.pendingBuffers.delete(id)
     const session = this.sessions.get(id)
     if (session) {
       try {
@@ -106,6 +125,11 @@ export class PtyManager {
   }
 
   killAll(): void {
+    if (this.flushTimer) {
+      clearInterval(this.flushTimer)
+      this.flushTimer = null
+    }
+    this.pendingBuffers.clear()
     this.sessions.forEach((_session, id) => {
       this.kill(id)
     })

@@ -4,6 +4,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { SearchAddon } from '@xterm/addon-search'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
+import { CanvasAddon } from '@xterm/addon-canvas'
 import '@xterm/xterm/css/xterm.css'
 import { HistorySearch } from './HistorySearch'
 
@@ -87,6 +88,13 @@ export const TerminalView: React.FC<Props> = React.memo(({ paneId, settings, onE
     term.unicode.activeVersion = '11'
 
     term.open(container)
+
+    try {
+      term.loadAddon(new CanvasAddon())
+    } catch (err) {
+      console.warn('[TerminalView] CanvasAddon init fallback:', err)
+    }
+
     // 렌더링 사이클 후 fit 실행 (DOM이 실제로 렌더된 이후)
     requestAnimationFrame(() => {
       fitAddon.fit()
@@ -98,7 +106,8 @@ export const TerminalView: React.FC<Props> = React.memo(({ paneId, settings, onE
       if (e.type !== 'keydown') return true
       if (e.ctrlKey && e.key.toLowerCase() === 'c') {
         if (term.hasSelection()) {
-          navigator.clipboard.writeText(term.getSelection()).catch(console.error)
+          const selection = term.getSelection().replace(/\s+$/, '')
+          navigator.clipboard.writeText(selection).catch(console.error)
           term.clearSelection()
           return false
         }
@@ -119,7 +128,16 @@ export const TerminalView: React.FC<Props> = React.memo(({ paneId, settings, onE
         return false
       }
       if (e.ctrlKey && e.key.toLowerCase() === 'a') {
-        term.selectAll()
+        const buffer = term.buffer.active
+        let lastNonEmptyRow = 0
+        for (let i = buffer.length - 1; i >= 0; i--) {
+          const line = buffer.getLine(i)
+          if (line && line.translateToString(true).trim().length > 0) {
+            lastNonEmptyRow = i
+            break
+          }
+        }
+        term.selectLines(0, lastNonEmptyRow)
         return false
       }
       return true
@@ -131,16 +149,14 @@ export const TerminalView: React.FC<Props> = React.memo(({ paneId, settings, onE
     })
 
     // PTY 출력 → xterm
-    const cleanupOnData = window.api.terminal.onData((id, data) => {
-      if (id === paneId) term.write(data)
+    const cleanupOnData = window.api.terminal.onData(paneId, (data) => {
+      term.write(data)
     })
 
     // PTY 종료
-    const cleanupOnExit = window.api.terminal.onExit((id, exitCode) => {
-      if (id === paneId) {
-        term.write(`\r\n\x1b[90m[프로세스가 종료되었습니다 (코드: ${exitCode})]\x1b[0m\r\n`)
-        onExit?.(exitCode)
-      }
+    const cleanupOnExit = window.api.terminal.onExit(paneId, (exitCode) => {
+      term.write(`\r\n\x1b[90m[프로세스가 종료되었습니다 (코드: ${exitCode})]\x1b[0m\r\n`)
+      onExit?.(exitCode)
     })
 
     // window resize 이벤트 → fit

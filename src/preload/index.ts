@@ -33,6 +33,17 @@ interface AppSettingsData {
   shellOverride?: string
 }
 
+const terminalDataCallbacks = new Map<string, (data: string) => void>()
+const terminalExitCallbacks = new Map<string, (exitCode: number) => void>()
+
+ipcRenderer.on('terminal-out', (_event, id: string, data: string) => {
+  terminalDataCallbacks.get(id)?.(data)
+})
+
+ipcRenderer.on('terminal-exit', (_event, id: string, exitCode: number) => {
+  terminalExitCallbacks.get(id)?.(exitCode)
+})
+
 const api = {
   terminal: {
     create: (id: string, cols: number, rows: number, cwd?: string): void =>
@@ -43,20 +54,17 @@ const api = {
       ipcRenderer.send('terminal-resize', id, cols, rows),
     kill: (id: string): void =>
       ipcRenderer.send('terminal-kill', id),
-    onData: (callback: (id: string, data: string) => void): (() => void) => {
-      const listener = (_event: Electron.IpcRendererEvent, id: string, data: string): void =>
-        callback(id, data)
-      ipcRenderer.on('terminal-out', listener)
-      return () => ipcRenderer.removeListener('terminal-out', listener)
+    onData: (paneId: string, callback: (data: string) => void): (() => void) => {
+      terminalDataCallbacks.set(paneId, callback)
+      return () => {
+        terminalDataCallbacks.delete(paneId)
+      }
     },
-    onExit: (callback: (id: string, exitCode: number) => void): (() => void) => {
-      const listener = (
-        _event: Electron.IpcRendererEvent,
-        id: string,
-        exitCode: number
-      ): void => callback(id, exitCode)
-      ipcRenderer.on('terminal-exit', listener)
-      return () => ipcRenderer.removeListener('terminal-exit', listener)
+    onExit: (paneId: string, callback: (exitCode: number) => void): (() => void) => {
+      terminalExitCallbacks.set(paneId, callback)
+      return () => {
+        terminalExitCallbacks.delete(paneId)
+      }
     }
   },
   db: {
