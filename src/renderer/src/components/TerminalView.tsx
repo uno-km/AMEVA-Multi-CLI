@@ -12,9 +12,10 @@ interface Props {
   settings: AppSettings
   onExit?: (exitCode: number) => void
   onFocus?: () => void
+  onTitleChange?: (title: string) => void
 }
 
-export const TerminalView: React.FC<Props> = React.memo(({ paneId, settings, onExit, onFocus }) => {
+export const TerminalView: React.FC<Props> = React.memo(({ paneId, settings, onExit, onFocus, onTitleChange }) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
@@ -133,6 +134,12 @@ export const TerminalView: React.FC<Props> = React.memo(({ paneId, settings, onE
     // window resize 이벤트 → fit
     window.addEventListener('resize', handleFit)
 
+    const onTitleDispose = term.onTitleChange((title) => {
+      if (title && title.trim().length > 0) {
+        onTitleChange?.(title)
+      }
+    })
+
     const handleFocus = () => {
       onFocus?.()
     }
@@ -161,6 +168,7 @@ export const TerminalView: React.FC<Props> = React.memo(({ paneId, settings, onE
       cleanupOnData()
       cleanupOnExit()
       onDataDispose.dispose()
+      onTitleDispose.dispose()
       window.api.terminal.kill(paneId)
       term.dispose()
       termRef.current = null

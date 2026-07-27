@@ -190,6 +190,9 @@ export const PaneRenderer: React.FC<Props> = React.memo(({ tabId, node, activePa
           paneId={node.id}
           settings={settings}
           onFocus={handleFocus}
+          onTitleChange={(title) => {
+            useTabStore.getState().renamePane(tabId, node.id, title)
+          }}
         />
         <DropZones tabId={tabId} paneId={node.id} movePane={movePane} />
       </div>

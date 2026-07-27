@@ -62,6 +62,16 @@ function App(): JSX.Element {
   const portPanelRef = useRef<HTMLDivElement>(null)
   const tempPortHeightRef = useRef(250)
   
+  // Sync tabs to Tray
+  useEffect(() => {
+    const trayData = tabs.map(t => ({
+      id: t.id,
+      title: t.title || 'Terminal',
+      isActive: t.id === activeTabId
+    }))
+    window.api.system.updateTray(trayData)
+  }, [tabs, activeTabId])
+
   // 스냅샷 (기존 워크스페이스)
   const [snapshots, setSnapshots] = useState<Workspace[]>([])
   // 사이드바

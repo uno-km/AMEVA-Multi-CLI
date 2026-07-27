@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, Tray, Menu, dialog } from 'electron'
 import { join } from 'path'
 import { registerTerminalIpc } from './ipc/terminalIpc'
 import { registerSystemIpc } from './ipc/systemIpc'
@@ -9,6 +9,9 @@ import { BookmarkRepository } from './db/repositories/BookmarkRepository'
 import { SessionRepository } from './db/repositories/SessionRepository'
 import { WorkspaceRepository } from './db/repositories/WorkspaceRepository'
 import { SettingsRepository } from './db/repositories/SettingsRepository'
+
+let tray: Tray | null = null
+let isQuitting = false
 
 // DB는 앱 전체에서 싱글턴으로 유지
 const db = new AppDatabase()
@@ -92,6 +95,32 @@ function createWindow(): BrowserWindow {
     }
   })
 
+  mainWindow.on('close', (event) => {
+    if (!isQuitting) {
+      event.preventDefault()
+      
+      const choice = dialog.showMessageBoxSync(mainWindow, {
+        type: 'question',
+        buttons: ['최소화 (트레이)', '종료', '취소'],
+        defaultId: 0,
+        cancelId: 2,
+        title: '종료 확인',
+        message: '프로그램을 종료하시겠습니까?',
+        detail: '최소화를 선택하면 백그라운드(트레이)에서 계속 실행됩니다.'
+      })
+
+      if (choice === 0) {
+        // 최소화 (트레이로)
+        mainWindow.hide()
+      } else if (choice === 1) {
+        // 완전 종료
+        isQuitting = true
+        app.quit()
+      }
+      // choice === 2 (취소) 이면 그대로 창 유지
+    }
+  })
+
   return mainWindow
 }
 
@@ -110,6 +139,72 @@ app.whenReady().then(() => {
       const newWindow = createWindow()
       const newManager = new PtyManager(newWindow)
       registerTerminalIpc(newManager, historyRepo)
+    } else {
+      BrowserWindow.getAllWindows()[0].show()
+    }
+  })
+
+  const iconPath = join(__dirname, '../../build/icon.png')
+  tray = new Tray(iconPath)
+  
+  const updateTrayMenu = (openTabs: { id: string; title: string; isActive: boolean }[] = []) => {
+    const template: Electron.MenuItemConstructorOptions[] = [
+      {
+        label: '열기 (Open)',
+        click: () => {
+          const wins = BrowserWindow.getAllWindows()
+          if (wins.length > 0) {
+            wins[0].show()
+          } else {
+            const newWindow = createWindow()
+            const newManager = new PtyManager(newWindow)
+            registerTerminalIpc(newManager, historyRepo)
+          }
+        }
+      },
+      { type: 'separator' }
+    ]
+
+    if (openTabs.length > 0) {
+      template.push({ label: '--- 열린 화면 목록 ---', enabled: false })
+      openTabs.forEach(tab => {
+        template.push({
+          label: (tab.isActive ? '✓ ' : '  ') + tab.title,
+          click: () => {
+            const wins = BrowserWindow.getAllWindows()
+            if (wins.length > 0) {
+              wins[0].show()
+              wins[0].webContents.send('focus-tab', tab.id)
+            }
+          }
+        })
+      })
+      template.push({ type: 'separator' })
+    }
+
+    template.push({
+      label: '종료',
+      click: () => {
+        isQuitting = true
+        app.quit()
+      }
+    })
+
+    tray?.setContextMenu(Menu.buildFromTemplate(template))
+  }
+
+  updateTrayMenu([])
+
+  ipcMain.on('update-tray', (_e, tabs) => {
+    updateTrayMenu(tabs)
+  })
+
+  tray.setToolTip('AMEVA-Multi-CLI')
+
+  tray.on('click', () => {
+    const wins = BrowserWindow.getAllWindows()
+    if (wins.length > 0) {
+      wins[0].show()
     }
   })
 })

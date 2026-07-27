@@ -32,6 +32,7 @@ interface TabStore {
   movePane: (tabId: string, sourcePaneId: string, targetPaneId: string, direction: SplitDirection, insertAfter: boolean) => void
   closePane: (tabId: string, paneId: string) => void
   renameTab: (tabId: string, title: string) => void
+  renamePane: (tabId: string, paneId: string, title: string) => void
   getActiveTab: () => Tab | undefined
   setPaneWeight: (tabId: string, nodeId: string, weight: number) => void
 }
@@ -97,6 +98,19 @@ function updateNodeWeight(node: PaneNode, targetId: string, weight: number): Pan
     return {
       ...node,
       children: node.children.map(c => updateNodeWeight(c, targetId, weight))
+    }
+  }
+  return node
+}
+
+function updateNodeTitle(node: PaneNode, targetId: string, title: string): PaneNode {
+  if (node.id === targetId) {
+    return { ...node, title }
+  }
+  if (node.type === 'split' && node.children) {
+    return {
+      ...node,
+      children: node.children.map(c => updateNodeTitle(c, targetId, title))
     }
   }
   return node
@@ -230,6 +244,17 @@ export const useTabStore = create<TabStore>((set, get) => {
     renameTab: (tabId, title) =>
       set((state) => ({
         tabs: state.tabs.map((t) => (t.id === tabId ? { ...t, title } : t))
+      })),
+
+    renamePane: (tabId, paneId, title) =>
+      set((state) => ({
+        tabs: state.tabs.map((t) => {
+          if (t.id !== tabId) return t
+          return {
+            ...t,
+            rootNode: updateNodeTitle(t.rootNode, paneId, title)
+          }
+        })
       })),
 
     getActiveTab: () => {

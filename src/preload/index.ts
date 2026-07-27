@@ -102,7 +102,8 @@ const api = {
   },
   system: {
     getOpenPorts: (): Promise<any[]> => ipcRenderer.invoke('get-open-ports'),
-    killPort: (pid: number): Promise<boolean> => ipcRenderer.invoke('kill-port', pid)
+    killPort: (pid: number): Promise<boolean> => ipcRenderer.invoke('kill-port', pid),
+    updateTray: (tabs: { id: string; title: string; isActive: boolean }[]): void => ipcRenderer.send('update-tray', tabs)
   }
 }
 
