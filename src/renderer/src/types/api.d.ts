@@ -37,6 +37,10 @@ declare global {
         getSettings: () => Promise<AppSettings>
         saveSettings: (settings: Partial<AppSettings>) => void
       }
+      system: {
+        getOpenPorts: () => Promise<any[]>
+        killPort: (pid: number) => Promise<boolean>
+      }
     }
   }
 

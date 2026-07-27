@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { registerTerminalIpc } from './ipc/terminalIpc'
+import { registerSystemIpc } from './ipc/systemIpc'
 import { PtyManager } from './pty/PtyManager'
 import { AppDatabase } from './db/Database'
 import { HistoryRepository } from './db/repositories/HistoryRepository'
@@ -92,6 +93,7 @@ function createWindow(): BrowserWindow {
 
 app.whenReady().then(() => {
   registerDbIpc()
+  registerSystemIpc()
 
   const mainWindow = createWindow()
   const ptyManager = new PtyManager(mainWindow)

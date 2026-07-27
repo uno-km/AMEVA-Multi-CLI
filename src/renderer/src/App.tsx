@@ -73,6 +73,8 @@ function App(): JSX.Element {
   const [isPortManagerOpen, setIsPortManagerOpen] = useState(false)
   const [portPanelHeight, setPortPanelHeight] = useState(250)
   const [portSearchQuery, setPortSearchQuery] = useState('')
+  const [isRefreshingPorts, setIsRefreshingPorts] = useState(false)
+  const isRefreshingRef = useRef(false)
 
   // 세션 저장 debounce 타이머
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -258,6 +260,8 @@ function App(): JSX.Element {
   // 포트 매니저 핸들러
   // ─────────────────────────────────────────────────────────────────────────
   const refreshPorts = useCallback(async () => {
+    if (isRefreshingRef.current) return
+    isRefreshingRef.current = true
     setIsRefreshingPorts(true)
     try {
       const ports = await window.api.system.getOpenPorts()
@@ -266,6 +270,7 @@ function App(): JSX.Element {
       console.error('[App] Failed to get ports', err)
     } finally {
       setIsRefreshingPorts(false)
+      isRefreshingRef.current = false
     }
   }, [])
 
@@ -275,13 +280,6 @@ function App(): JSX.Element {
     }
   }, [isPortManagerOpen, refreshPorts])
 
-  useEffect(() => {
-    const onFocus = () => {
-      if (isPortManagerOpen) refreshPorts()
-    }
-    window.addEventListener('focus', onFocus)
-    return () => window.removeEventListener('focus', onFocus)
-  }, [isPortManagerOpen, refreshPorts])
 
   const handleKillPort = useCallback(async (pid: number) => {
     if (!(await confirm('프로세스 강제 종료', `PID ${pid}를 강제 종료하시겠습니까? (서버 포트 닫힘)`))) return
@@ -560,7 +558,7 @@ function App(): JSX.Element {
                         }
                         if (portSearchQuery) {
                           const q = portSearchQuery.toLowerCase()
-                          if (!p.port.toString().includes(q) && !safeName.includes(q)) return false
+                          if (!p.port?.toString().includes(q) && !safeName.includes(q)) return false
                         }
                         return true
                       })

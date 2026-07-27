@@ -107,8 +107,8 @@ export const PaneRenderer: React.FC<Props> = React.memo(({ tabId, node, activePa
         minWidth: 50,
         minHeight: 50,
         boxSizing: 'border-box',
-        border: isActive ? '2px solid #00aaff' : '1px solid #333',
-        boxShadow: isActive ? '0 0 10px rgba(0, 170, 255, 0.4)' : 'none',
+        border: `1px solid ${isActive ? '#00aaff' : '#333'}`,
+        boxShadow: isActive ? 'inset 0 0 0 1px #00aaff, 0 0 10px rgba(0, 170, 255, 0.4)' : 'none',
         zIndex: isActive ? 5 : 1,
         transition: 'all 0.2s ease',
         overflow: 'hidden'
