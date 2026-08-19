@@ -84,11 +84,10 @@ input::placeholder {
   overflow: hidden;
   border: 1px solid #333;
   z-index: 1;
-  transition: border-color 0.1s, box-shadow 0.1s;
+  /* transition: box-shadow 0.1s; <-- This causes massive GPU lag over WebGL */
 }
 .pane-leaf.pane-active {
-  border-color: #00aaff;
-  box-shadow: inset 0 0 0 1px #00aaff, 0 0 10px rgba(0, 170, 255, 0.3);
+  border: 1px solid #00aaff;
   z-index: 5;
 }
 

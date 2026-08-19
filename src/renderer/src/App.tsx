@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { SettingsModal } from './components/SettingsModal'
 import { useDialog } from './components/DialogProvider'
-import { useTabStore, type Tab, type PaneNode } from './stores/tabStore'
+import { useTabStore, type Tab, type PaneNode, type Workspace, type Bookmark, type HistoryItem } from './stores/tabStore'
+import { useShallow } from 'zustand/react/shallow'
 import { PaneRenderer } from './components/PaneRenderer'
 import { nanoid } from 'nanoid'
 
@@ -50,7 +51,9 @@ function getFirstPaneId(node: any): string {
 type SidebarTab = 'bookmarks' | 'history' | 'snapshots'
 
 function App(): JSX.Element {
-  const { tabs, activeTabId, addTab, setActiveTab, closeTab } = useTabStore()
+  const { activeTabId, addTab, setActiveTab, closeTab } = useTabStore()
+  const tabsMeta = useTabStore(useShallow(s => s.tabs.map(t => ({ id: t.id, title: t.title, rootNode: t.rootNode }))))
+
   const { confirm, prompt } = useDialog()
 
   // 북마크
@@ -66,7 +69,7 @@ function App(): JSX.Element {
   
   // Sync tabs to Tray
   useEffect(() => {
-    const trayData = tabs.map(t => ({
+    const trayData = tabsMeta.map(t => ({
       id: t.id,
       title: t.title || 'Terminal',
       isActive: t.id === activeTabId
@@ -76,7 +79,7 @@ function App(): JSX.Element {
       window.api.system.updateTray(trayData)
       prevTrayDataRef.current = newTrayStr
     }
-  }, [tabs, activeTabId])
+  }, [tabsMeta, activeTabId])
 
   // 스냅샷 (기존 워크스페이스)
   const [snapshots, setSnapshots] = useState<Workspace[]>([])
@@ -141,14 +144,15 @@ function App(): JSX.Element {
   useEffect(() => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     saveTimerRef.current = setTimeout(() => {
-      if (tabs.length > 0) {
-        window.api.db.saveSession('default', tabs)
+      const fullTabs = useTabStore.getState().tabs
+      if (fullTabs.length > 0) {
+        window.api.db.saveSession('default', fullTabs)
       }
     }, 500)
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     }
-  }, [tabs])
+  }, [tabsMeta])
 
   // ── 히스토리 사이드바 열릴 때 로드 ──
   useEffect(() => {
@@ -218,7 +222,8 @@ function App(): JSX.Element {
 
   const handleRunBookmark = useCallback(
     (b: Bookmark) => {
-      const activeTab = tabs.find((t) => t.id === activeTabId)
+      const state = useTabStore.getState()
+      const activeTab = state.tabs.find((t) => t.id === activeTabId)
       if (!activeTab || !activeTab.activePaneId) return
 
       // 여러 줄 명령어 대응: 빈 줄과 주석(#)을 제거하고 실행 (PS1 스크립트 등에서 에러 방지)
@@ -226,7 +231,7 @@ function App(): JSX.Element {
       const formattedCommand = lines.join('\r') + '\r'
       window.api.terminal.write(activeTab.activePaneId, formattedCommand)
     },
-    [tabs, activeTabId]
+    [activeTabId]
   )
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -234,11 +239,12 @@ function App(): JSX.Element {
   // ─────────────────────────────────────────────────────────────────────────
   const handleRunHistory = useCallback(
     (item: HistoryItem) => {
-      const activeTab = tabs.find((t) => t.id === activeTabId)
+      const state = useTabStore.getState()
+      const activeTab = state.tabs.find((t) => t.id === activeTabId)
       if (!activeTab || !activeTab.activePaneId) return
       window.api.terminal.write(activeTab.activePaneId, item.command + '\r')
     },
-    [tabs, activeTabId]
+    [activeTabId]
   )
 
   const handleClearHistory = useCallback(async () => {
@@ -253,11 +259,12 @@ function App(): JSX.Element {
   const handleSaveSnapshot = useCallback(async () => {
     const name = await prompt('스냅샷 저장', '현재 터미널 분할 레이아웃을 저장할 이름을 입력하세요:', '내 레이아웃 스냅샷')
     if (!name?.trim()) return
+    const fullTabs = useTabStore.getState().tabs
     const ws: Workspace = {
       id: nanoid(),
       name: name.trim(),
       layout: {
-        tabs: tabs.map((tab) => ({
+        tabs: fullTabs.map((tab) => ({
           id: tab.id,
           title: tab.title,
           rootNode: tab.rootNode
@@ -268,7 +275,7 @@ function App(): JSX.Element {
     }
     window.api.db.saveWorkspace(ws)
     setSnapshots((prev) => [ws, ...prev])
-  }, [tabs, prompt])
+  }, [prompt])
 
   const handleRestoreSnapshot = useCallback(async (ws: Workspace) => {
     if (!(await confirm('스냅샷 복원', `"${ws.name}" 스냅샷을 복원하시겠습니까?\n현재 열려있는 모든 탭이 닫히고 덮어씌워집니다.`))) return
@@ -348,7 +355,7 @@ function App(): JSX.Element {
   // ─────────────────────────────────────────────────────────────────────────
   // 렌더
   // ─────────────────────────────────────────────────────────────────────────
-  const activeTab = tabs.find((t) => t.id === activeTabId)
+  // const activeTab = tabsMeta.find((t) => t.id === activeTabId)
 
   return (
     <div style={styles.root}>
@@ -362,7 +369,7 @@ function App(): JSX.Element {
           ☰
         </button>
 
-        {tabs.map((tab) => (
+        {tabsMeta.map((tab) => (
           <div
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
@@ -641,7 +648,7 @@ function App(): JSX.Element {
 
         {/* ── 트리 기반 패인 렌더링 영역 ── */}
         <div style={styles.paneArea}>
-          {tabs.map((tab) => (
+          {tabsMeta.map((tab) => (
             <div
               key={tab.id}
               style={{

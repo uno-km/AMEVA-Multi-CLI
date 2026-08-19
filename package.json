@@ -59,8 +59,7 @@
       "buildResources": "build"
     },
     "asarUnpack": [
-      "**/*.node",
-      "node_modules/node-pty/**/*"
+      "**/*.node"
     ],
     "win": {
       "icon": "build/icon.ico",
